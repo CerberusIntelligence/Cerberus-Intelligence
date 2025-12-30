@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserAccess, AuthContextType } from '../types';
-import { supabase, authHelpers, accessHelpers } from '../services/supabaseClient';
+import { supabase, authHelpers, accessHelpers, isSupabaseConfigured } from '../services/supabaseClient';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -14,6 +14,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Initialize auth state and listen for changes
   useEffect(() => {
+    // If Supabase is not configured, just finish loading
+    if (!isSupabaseConfigured) {
+      console.log('Running in demo mode - Supabase not configured');
+      setIsLoading(false);
+      return;
+    }
+
     // Check current session on mount
     checkUser();
 
@@ -44,6 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       console.error('Error checking user:', error);
+      // Don't throw - just log and continue
     } finally {
       setIsLoading(false);
     }

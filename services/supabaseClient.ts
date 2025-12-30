@@ -1,11 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 import { User, UserAccess } from '../types';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-key';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('⚠️  Supabase credentials not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local');
+const isConfigured = import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!isConfigured) {
+  console.warn('⚠️  Supabase credentials not configured. Running in DEMO mode. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local for full functionality.');
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
@@ -15,6 +17,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true
   }
 });
+
+// Export flag to check if Supabase is configured
+export const isSupabaseConfigured = isConfigured;
 
 // Auth Helpers
 export const authHelpers = {

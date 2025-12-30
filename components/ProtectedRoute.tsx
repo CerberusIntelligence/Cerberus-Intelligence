@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { isSupabaseConfigured } from '../services/supabaseClient';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -12,6 +13,12 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   requirePayment = true
 }) => {
   const { user, hasActiveAccess, isLoading } = useAuth();
+
+  // In demo mode (Supabase not configured), allow access to everything
+  if (!isSupabaseConfigured) {
+    console.log('Demo mode: Allowing access to protected route');
+    return <>{children}</>;
+  }
 
   // Show loading state while checking authentication
   if (isLoading) {

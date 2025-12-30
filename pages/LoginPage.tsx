@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { CerberusLogo } from '../components/CerberusLogo';
 import { InteractiveButton } from '../components/InteractiveButton';
 import { AnimatedBackground } from '../components/AnimatedBackground';
+import { isSupabaseConfigured } from '../services/supabaseClient';
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -15,12 +16,28 @@ const LoginPage: React.FC = () => {
   const { signIn, signUp, hasActiveAccess } = useAuth();
   const navigate = useNavigate();
 
+  // In demo mode, show a message and allow direct access
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      console.log('Demo mode active - Supabase not configured');
+    }
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
 
     try {
+      // In demo mode, just navigate to dashboard
+      if (!isSupabaseConfigured) {
+        console.log('Demo mode: Bypassing authentication');
+        setTimeout(() => {
+          navigate('/dashboard');
+        }, 500);
+        return;
+      }
+
       if (isSignUp) {
         await signUp(email, password);
         // After signup, user needs to pay - show payment modal
@@ -62,6 +79,18 @@ const LoginPage: React.FC = () => {
               Secure Intelligence Hub
             </p>
           </div>
+
+          {/* Demo Mode Notice */}
+          {!isSupabaseConfigured && (
+            <div className="bg-[#FF9F0A]/10 border-2 border-[#FF9F0A]/50 rounded-2xl p-6 mb-6 text-center">
+              <p className="text-[#FF9F0A] font-mono text-sm font-black uppercase mb-2">
+                ⚡ Demo Mode Active
+              </p>
+              <p className="text-zinc-300 font-mono text-xs">
+                Supabase not configured. Click "Sign In" to access dashboard directly.
+              </p>
+            </div>
+          )}
 
           {/* Login Form */}
           <div className="bg-zinc-900/40 border-2 border-white/10 rounded-3xl p-10 backdrop-blur-xl">
