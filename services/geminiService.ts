@@ -3,12 +3,213 @@ import { ProductInsight, DetailedProduct } from "../types";
 import { getAlibabaSourceInfo } from "./alibabaService";
 
 const apiKey = process.env.API_KEY;
+const isGeminiConfigured = apiKey && apiKey !== 'PLACEHOLDER_API_KEY';
 
-if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
-  console.warn('⚠️  Warning: Gemini API key is not configured. Please set GEMINI_API_KEY in .env.local');
+if (!isGeminiConfigured) {
+  console.warn('⚠️  Gemini API key not configured. Running in DEMO mode with mock data.');
+  console.warn('💡  To use real AI analysis, get a free API key from https://ai.google.dev/');
 }
 
-const ai = new GoogleGenAI({ apiKey: apiKey || '' });
+const ai = isGeminiConfigured ? new GoogleGenAI({ apiKey: apiKey || '' }) : null;
+
+// Export the configuration status
+export const isGeminiInDemoMode = !isGeminiConfigured;
+
+/**
+ * Generate realistic mock data for demo mode
+ */
+function generateMockProductInsights(niche: string): ProductInsight[] {
+  const productTemplates = [
+    { name: "Smart LED Strip Lights", adCount: 23, growth: 85, saturation: 35 },
+    { name: "Portable Neck Fan", adCount: 18, growth: 78, saturation: 42 },
+    { name: "Magnetic Phone Mount", adCount: 31, growth: 72, saturation: 48 },
+    { name: "Wireless Charging Station", adCount: 27, growth: 81, saturation: 38 }
+  ];
+
+  return productTemplates.map((template, index) => ({
+    name: `${niche} - ${template.name}`,
+    niche: niche,
+    growthPotential: template.growth,
+    marketSaturation: template.saturation,
+    recommendedStrategy: `Target ${niche} enthusiasts via TikTok/Instagram with UGC content. Focus on problem-solution angle.`,
+    pricePoint: `$${(19.99 + index * 5).toFixed(2)} - $${(34.99 + index * 5).toFixed(2)}`,
+    justification: `Low saturation (${template.saturation}%), ${template.adCount} active ads detected, strong engagement metrics on social platforms.`,
+    adCount: template.adCount,
+    isAIRecommended: true
+  }));
+}
+
+/**
+ * Generate comprehensive mock data for detailed product analysis
+ */
+async function generateMockDetailedProducts(niche: string): Promise<DetailedProduct[]> {
+  const mockProducts = [
+    {
+      name: `Premium ${niche} Smart Device`,
+      basePrice: 29.99,
+      growth: 87,
+      saturation: 32,
+      adCount: 24,
+      searchVolume: 45000
+    },
+    {
+      name: `Portable ${niche} Kit`,
+      basePrice: 24.99,
+      growth: 82,
+      saturation: 38,
+      adCount: 19,
+      searchVolume: 38000
+    },
+    {
+      name: `${niche} Pro Edition`,
+      basePrice: 39.99,
+      growth: 79,
+      saturation: 41,
+      adCount: 28,
+      searchVolume: 52000
+    },
+    {
+      name: `Wireless ${niche} Station`,
+      basePrice: 34.99,
+      growth: 85,
+      saturation: 35,
+      adCount: 22,
+      searchVolume: 41000
+    },
+    {
+      name: `Mini ${niche} Accessory`,
+      basePrice: 19.99,
+      growth: 91,
+      saturation: 28,
+      adCount: 16,
+      searchVolume: 36000
+    },
+    {
+      name: `Magnetic ${niche} Holder`,
+      basePrice: 22.99,
+      growth: 88,
+      saturation: 30,
+      adCount: 20,
+      searchVolume: 43000
+    },
+    {
+      name: `LED ${niche} Light`,
+      basePrice: 27.99,
+      growth: 83,
+      saturation: 37,
+      adCount: 25,
+      searchVolume: 47000
+    },
+    {
+      name: `Adjustable ${niche} Stand`,
+      basePrice: 32.99,
+      growth: 80,
+      saturation: 39,
+      adCount: 21,
+      searchVolume: 39000
+    }
+  ];
+
+  const products = await Promise.all(
+    mockProducts.map(async (template, index) => {
+      const alibabaData = await getAlibabaSourceInfo(template.name);
+      const unitCost = template.basePrice * 0.35; // 35% COGS
+      const profitMargin = ((template.basePrice - unitCost) / template.basePrice * 100);
+
+      return {
+        id: `${niche.toLowerCase().replace(/\s+/g, '-')}-${index}-${Date.now()}`,
+        name: template.name,
+        niche: niche,
+        growthPotential: template.growth,
+        marketSaturation: template.saturation,
+        recommendedStrategy: `Launch with TikTok creators, scale to Facebook once proof-of-concept validated. Target ${niche} enthusiasts.`,
+        pricePoint: `$${template.basePrice.toFixed(2)}`,
+        justification: `${template.adCount} active ads across platforms, ${template.growth}% growth potential, low saturation at ${template.saturation}%.`,
+        isAIRecommended: true,
+
+        adAnalytics: {
+          totalAds: template.adCount,
+          platforms: [
+            { name: "TikTok", count: Math.floor(template.adCount * 0.45), engagement: 78 + index * 2 },
+            { name: "Facebook", count: Math.floor(template.adCount * 0.30), engagement: 65 + index * 2 },
+            { name: "Instagram", count: Math.floor(template.adCount * 0.20), engagement: 72 + index * 2 },
+            { name: "YouTube", count: Math.floor(template.adCount * 0.05), engagement: 81 + index * 2 }
+          ],
+          topPerformingAds: [
+            { platform: "TikTok", engagement: 89, link: "#demo-ad-1" },
+            { platform: "Facebook", engagement: 84, link: "#demo-ad-2" },
+            { platform: "Instagram", engagement: 86, link: "#demo-ad-3" }
+          ]
+        },
+
+        amazonData: {
+          competitorProducts: [
+            {
+              title: `${template.name} - Best Seller`,
+              price: template.basePrice + 5,
+              rating: 4.3 + (index % 3) * 0.2,
+              reviews: 2847 + index * 300,
+              link: "#demo-amazon-product",
+              asin: `B0${index}XYZ${Math.floor(Math.random() * 1000)}`
+            },
+            {
+              title: `Premium ${template.name}`,
+              price: template.basePrice + 10,
+              rating: 4.5 + (index % 2) * 0.1,
+              reviews: 1923 + index * 200,
+              link: "#demo-amazon-product",
+              asin: `B0${index}ABC${Math.floor(Math.random() * 1000)}`
+            },
+            {
+              title: `Budget ${template.name}`,
+              price: template.basePrice - 5,
+              rating: 3.9 + (index % 4) * 0.1,
+              reviews: 1456 + index * 150,
+              link: "#demo-amazon-product",
+              asin: `B0${index}DEF${Math.floor(Math.random() * 1000)}`
+            }
+          ],
+          estimatedRevenue: 125000 + index * 15000,
+          avgPrice: template.basePrice
+        },
+
+        competitors: {
+          websites: [
+            {
+              url: `www.${niche.toLowerCase().replace(/\s+/g, '')}-store.com`,
+              monthlyVisitors: 45000 + index * 5000,
+              estimatedRevenue: 89000 + index * 8000
+            },
+            {
+              url: `shop${niche.toLowerCase().replace(/\s+/g, '')}.com`,
+              monthlyVisitors: 32000 + index * 4000,
+              estimatedRevenue: 67000 + index * 6000
+            }
+          ],
+          marketShare: 12 + index * 2
+        },
+
+        alibabaLink: alibabaData.alibabaLink,
+        sourcing: {
+          moq: alibabaData.moq,
+          unitPrice: alibabaData.unitPrice,
+          shippingTime: alibabaData.shippingTime,
+          supplier: alibabaData.supplier
+        },
+
+        metrics: {
+          searchVolume: template.searchVolume,
+          trendDirection: index % 3 === 0 ? 'up' : index % 3 === 1 ? 'stable' : 'up',
+          seasonality: index % 2 === 0 ? 'Year-round demand' : 'Peak: Q4',
+          profitMargin: Math.round(profitMargin),
+          breakEvenUnits: Math.ceil(3500 / (template.basePrice - unitCost))
+        }
+      } as DetailedProduct;
+    })
+  );
+
+  return products;
+}
 
 export async function analyzeSocialAds(niche: string): Promise<ProductInsight[]> {
   // Validate input
@@ -16,9 +217,12 @@ export async function analyzeSocialAds(niche: string): Promise<ProductInsight[]>
     throw new Error('Niche input is required. Please enter a product category or market to analyze.');
   }
 
-  // Validate API key
-  if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
-    throw new Error('Gemini API key is not configured. Please set GEMINI_API_KEY in .env.local and restart the development server.');
+  // If in demo mode, return mock data
+  if (!isGeminiConfigured) {
+    console.log('🎭 Demo mode: Returning mock product insights');
+    // Simulate API delay for realism
+    await new Promise(resolve => setTimeout(resolve, 800));
+    return generateMockProductInsights(niche);
   }
 
   try {
@@ -90,9 +294,12 @@ export async function getDetailedProductData(niche: string): Promise<DetailedPro
     throw new Error('Niche input is required. Please enter a product category or market to analyze.');
   }
 
-  // Validate API key
-  if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
-    throw new Error('Gemini API key is not configured. Please set GEMINI_API_KEY in .env.local and restart the development server.');
+  // If in demo mode, return mock data
+  if (!isGeminiConfigured) {
+    console.log('🎭 Demo mode: Returning comprehensive mock product data');
+    // Simulate API delay for realism
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    return generateMockDetailedProducts(niche);
   }
 
   try {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { getDetailedProductData } from '../services/geminiService';
+import { getDetailedProductData, isGeminiInDemoMode } from '../services/geminiService';
 import { DetailedProduct } from '../types';
 import { CerberusLogo } from '../components/CerberusLogo';
 import { InteractiveButton } from '../components/InteractiveButton';
@@ -146,6 +146,34 @@ const DashboardPage: React.FC = () => {
               Search
             </InteractiveButton>
           </div>
+
+          {/* Demo Mode Notice */}
+          {isGeminiInDemoMode && (
+            <div className="bg-[#FF9F0A]/10 border-2 border-[#FF9F0A]/50 rounded-2xl p-5 mb-6">
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0 bg-[#FF9F0A] p-2 rounded-lg">
+                  <Cpu size={20} className="text-black" />
+                </div>
+                <div>
+                  <p className="text-[#FF9F0A] font-mono text-sm font-black uppercase mb-1">
+                    🎭 Demo Mode Active
+                  </p>
+                  <p className="text-zinc-300 font-mono text-xs leading-relaxed">
+                    Using simulated product intelligence data. Get your free Gemini API key at{' '}
+                    <a
+                      href="https://ai.google.dev/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#FF9F0A] hover:underline font-bold"
+                    >
+                      ai.google.dev
+                    </a>
+                    {' '}and add it to .env.local for real AI-powered analysis.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Filter Tabs */}
           <div className="flex items-center gap-4 flex-wrap">
