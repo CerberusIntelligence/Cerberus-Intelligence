@@ -35,8 +35,8 @@ Inspired by the mythological gatekeeper, Cerberus Protocol guards your investmen
 
 1. **Clone the repository**
    ```bash
-   git clone <your-repo-url>
-   cd cerberus-protocol
+   git clone https://github.com/CerberusIntelligence/Cerberus-Intelligence.git
+   cd Cerberus-Intelligence
    ```
 
 2. **Install dependencies**
