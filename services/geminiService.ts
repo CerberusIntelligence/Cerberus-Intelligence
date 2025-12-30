@@ -1,22 +1,23 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { ProductInsight } from "../types";
 
 const apiKey = process.env.API_KEY;
 
 if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
-  console.warn('Warning: Gemini API key is not configured. Please set GEMINI_API_KEY in .env.local');
+  console.warn('⚠️  Warning: Gemini API key is not configured. Please set GEMINI_API_KEY in .env.local');
 }
 
 const ai = new GoogleGenAI({ apiKey: apiKey || '' });
 
 export async function analyzeSocialAds(niche: string): Promise<ProductInsight[]> {
+  // Validate input
   if (!niche || niche.trim().length === 0) {
-    throw new Error('Niche input is required');
+    throw new Error('Niche input is required. Please enter a product category or market to analyze.');
   }
 
+  // Validate API key
   if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
-    throw new Error('Gemini API key is not configured. Please set GEMINI_API_KEY in .env.local');
+    throw new Error('Gemini API key is not configured. Please set GEMINI_API_KEY in .env.local and restart the development server.');
   }
 
   try {
@@ -54,13 +55,17 @@ export async function analyzeSocialAds(niche: string): Promise<ProductInsight[]>
     });
 
     if (!response || !response.text) {
-      throw new Error('Invalid response from Gemini API');
+      throw new Error('Invalid response from Gemini API. Please try again.');
     }
 
     const data = JSON.parse(response.text);
 
     if (!Array.isArray(data)) {
-      throw new Error('Expected array response from Gemini API');
+      throw new Error('Unexpected response format from Gemini API. Expected an array of products.');
+    }
+
+    if (data.length === 0) {
+      throw new Error('No products found for this niche. Try a different search term.');
     }
 
     return data;

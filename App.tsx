@@ -444,7 +444,7 @@ const App: React.FC = () => {
           </div>
           
           <div className="pt-16 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-12 font-mono text-[12px] uppercase tracking-[0.4em] font-black text-zinc-700">
-            <p>&copy; 2024 CERBERUS PROTOCOL // SECURE_NODE: ALPHA-X86</p>
+            <p>&copy; 2025 CERBERUS PROTOCOL // SECURE_NODE: ALPHA-X86</p>
             <div className="flex gap-16">
               <a href="#" className="hover:text-white transition-colors">Legal_Disclosure</a>
               <a href="#" className="hover:text-white transition-colors">Privacy_Matrix</a>

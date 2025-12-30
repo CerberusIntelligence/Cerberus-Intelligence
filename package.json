@@ -1,8 +1,24 @@
 {
   "name": "cerberus-protocol",
+  "version": "1.0.0",
+  "description": "AI-powered e-commerce product validation and market intelligence tool that identifies high-potential products through social media trend analysis",
   "private": true,
-  "version": "0.0.0",
   "type": "module",
+  "author": "Cerberus Intelligence",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CerberusIntelligence/Cerberus-Intelligence.git"
+  },
+  "keywords": [
+    "e-commerce",
+    "product-validation",
+    "market-intelligence",
+    "ai",
+    "gemini",
+    "social-media-analysis",
+    "dropshipping",
+    "market-research"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -17,6 +33,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
