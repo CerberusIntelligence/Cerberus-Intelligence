@@ -1,0 +1,15 @@
+# Sensitive config
+.env
+
+# Runtime state (auto-generated)
+state.json
+wallet_db.json
+tracked_wallets.json
+mtproto_session.json
+
+# Compiled binaries
+*.exe
+*.exe~
+
+# Misc
+nul
