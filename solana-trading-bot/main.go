@@ -32,30 +32,15 @@ func main() {
 	log.Infof("Trade amount: %.4f SOL", cfg.TradeAmountSOL)
 	log.Infof("Max positions: %d", cfg.MaxPositions)
 	log.Infof("Stop loss: %.0f%% | Trailing: %.0f%%", cfg.StopLossPct*100, cfg.TrailingStopPct*100)
-	log.Infof("Channels configured: %d", len(cfg.MonitoredChannels))
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Core engine
 	eng := engine.New(cfg)
 
-	// Signal monitor (extracts contract addresses from messages)
-	monitor := telegram.NewMonitor(eng.SignalCh())
-
 	// Telegram control bot (alerts + commands)
 	bot := telegram.NewBot(cfg, eng)
 	go bot.Start(ctx)
-
-	// MTProto listener (reads alpha channels) — skipped in copy-only mode
-	if cfg.CopyOnlyMode {
-		log.Info("Copy-only mode — channel monitoring disabled, wallet tracker active")
-	} else {
-		mtproto := telegram.NewMTProtoClient(cfg, log.StandardLogger(), monitor)
-		if err := mtproto.Connect(ctx); err != nil {
-			log.WithError(err).Fatal("MTProto connection failed")
-		}
-	}
 
 	// Start engine
 	go eng.Start(ctx)

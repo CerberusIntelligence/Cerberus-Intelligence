@@ -24,7 +24,6 @@ type EngineAPI interface {
 	ClosePosition(address string) error
 	SetStopLoss(pct float64)
 	GetConfig() *config.Config
-	AddChannel(channel string)
 	InjectSignal(address, source string)
 	AddTrackedWallet(address string)
 	GetTrackedWallets() []string
@@ -118,8 +117,6 @@ func (b *Bot) handleCommand(msg *tgbotapi.Message) {
 		b.cmdPositions()
 	case "history", "hist":
 		b.cmdHistory()
-	case "channels":
-		b.cmdChannels()
 	case "params":
 		b.cmdParams()
 	case "pause":
@@ -138,14 +135,6 @@ func (b *Bot) handleCommand(msg *tgbotapi.Message) {
 		} else {
 			b.send("✅ Closing position...")
 		}
-	case "addchannel":
-		if len(parts) < 2 {
-			b.send("Usage: `/addchannel @channelname`")
-			return
-		}
-		ch := strings.TrimPrefix(parts[1], "@")
-		b.engine.AddChannel(ch)
-		b.send("✅ Added channel: `@" + ch + "`\nRestart bot for MTProto to join it.")
 	case "setsl":
 		if len(parts) < 2 {
 			b.send("Usage: `/setsl 35` (percent)")
@@ -191,19 +180,17 @@ func (b *Bot) handleCommand(msg *tgbotapi.Message) {
 }
 
 func (b *Bot) cmdHelp() {
-	b.send(`🤖 *Alpha Bot Commands*
+	b.send(`🤖 *Mirror Bot Commands*
 
 /status — balance, PnL, win rate
 /positions — open positions
 /history — last 10 trades
-/channels — monitored channels
 /params — current settings
 
 /pause — pause auto-trading
 /resume — resume auto-trading
 /close <addr> — manually close position
 /buy <addr> — manually inject signal
-/addchannel @name — add alpha channel
 /setsl 35 — set stop loss %
 /addwallet <addr> — copy-trade a wallet
 /wallets — list tracked wallets`)
@@ -318,19 +305,6 @@ func (b *Bot) cmdHistory() {
 			"%s `%s` | `%.4f SOL (%.1f%%)` | `%s`\n",
 			emoji, t.Symbol, t.PnLSOL, t.PnLPct, t.Reason,
 		)
-	}
-	b.send(msg)
-}
-
-func (b *Bot) cmdChannels() {
-	cfg := b.engine.GetConfig()
-	if len(cfg.MonitoredChannels) == 0 {
-		b.send("📡 No channels configured\n\nUse `/addchannel @name` to add one")
-		return
-	}
-	msg := "📡 *Monitored Channels*\n\n"
-	for _, ch := range cfg.MonitoredChannels {
-		msg += "• @" + ch + "\n"
 	}
 	b.send(msg)
 }

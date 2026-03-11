@@ -10,174 +10,108 @@ import (
 
 type Config struct {
 	// Mode
-	PaperTrading       bool    // Enable paper trading mode (no real trades)
+	PaperTrading bool
 
-	// Telegram Settings
-	TelegramAPIID      int
-	TelegramAPIHash    string
-	TelegramBotToken   string
-	TelegramChatID     int64
-	TelegramPhone      string   // Phone number for MTProto auth
-	MonitoredChannels  []string
+	// Telegram
+	TelegramBotToken string
+	TelegramChatID   int64
 
-	// Solana Settings
+	// Solana
 	SolanaRPCURL        string
 	SolanaWSURL         string
-	AdditionalRPCURLs   []string // Extra low-latency RPC endpoints
+	HeliusAPIKey        string
 	PrivateKey          string
 
-	// Trading Settings
-	PortfolioSize      float64 // Total portfolio in SOL
-	RiskPerTrade       float64 // Percentage risk per trade (0.02 = 2%)
-	MaxPositionSize    float64 // Max SOL per trade
-	MinLiquidity       float64 // Minimum liquidity in USD
-	SlippageBPS        int     // Slippage in basis points
-	PriorityFeeLamports uint64 // Priority fee for faster execution
+	// Trading
+	PaperBalance        float64 // Starting paper balance in SOL
+	TradeAmountSOL      float64 // SOL per trade
+	MaxPositions        int     // Max concurrent positions
+	MinLiquidityUSD     float64 // Minimum pool liquidity to enter
+	SlippageBPS         int
+	PriorityFeeLamports uint64
 
-	// Ultra-low-latency risk guards
-	MaxSlippagePercent    float64 // Abort if projected slippage > this (%)
-	MaxLpSharePercent     float64 // Abort if position > this % of LP
-	MaxLpDropPercent      float64 // Abort if LP dropped > this % over window
-	LpDropWindowSeconds   int     // Window for LP drop check
+	// Safety
+	RequireMintRevoked   bool
+	RequireFreezeRevoked bool
 
-	// Safety Thresholds
-	MinLiquidityLocked    float64 // Minimum % of LP locked
-	MaxTopHolderPercent   float64 // Max % single holder can own
-	MaxDevWalletPercent   float64 // Max % dev wallet can hold
-	MinHolderCount        int     // Minimum number of holders
-	MaxMintAuthority      bool    // Reject if mint authority exists
-	MaxFreezeAuthority    bool    // Reject if freeze authority exists
+	// Exit strategy
+	StopLossPct     float64
+	TrailingStopPct float64
+	TimeoutMinutes  int
+	TakeProfit1x    float64 // multiplier, e.g. 1.5 = 1.5x
+	TakeProfit2x    float64
+	TakeProfit3x    float64
+	TP1Pct          float64 // fraction to sell at TP1, e.g. 0.33
+	TP2Pct          float64
+	TP3Pct          float64
 
-	// Take Profit / Stop Loss
-	TakeProfitLevels      []float64 // e.g., [2.0, 5.0, 10.0] for 2x, 5x, 10x
-	TakeProfitPercents    []float64 // e.g., [0.3, 0.3, 0.4] sell 30%, 30%, 40%
-	StopLossPercent       float64   // e.g., 0.5 = sell if down 50%
-	TrailingStopPercent   float64   // e.g., 0.2 = 20% trailing stop
-	TimeoutMinutes        int       // Exit if no pump after X minutes
-
-	// Wallet Tracking
-	TrackedWallets        []string  // Wallets to copy trade
-	WalletTrackingEnabled bool
-
-	// Twitter/Social
-	TwitterBearerToken    string
-	TwitterEnabled        bool
-	TwitterKeywords       []string  // Additional keywords to track
-
-	// API Keys
-	BirdeyeAPIKey         string
-	HeliusAPIKey          string
-
-	// Rate Limiting
-	MaxTradesPerHour      int
-	CooldownSeconds       int
-
-	// Signal freshness — skip signals older than this many minutes
-	SignalMaxAgeMinutes   int
-
-	// Flow / distribution-based exits
-	DistributionThreshold float64 // Net sell flow threshold (0-1) to trigger exit
+	// Rate limiting
+	MaxTradesPerHour int
+	CooldownSeconds  int
 }
 
-func Load() (*Config, error) {
+func Load() *Config {
 	godotenv.Load()
 
-	apiID, _ := strconv.Atoi(getEnv("TELEGRAM_API_ID", "0"))
 	chatID, _ := strconv.ParseInt(getEnv("TELEGRAM_CHAT_ID", "0"), 10, 64)
-	portfolioSize, _ := strconv.ParseFloat(getEnv("PORTFOLIO_SIZE_SOL", "3.5"), 64)
-	riskPerTrade, _ := strconv.ParseFloat(getEnv("RISK_PER_TRADE", "0.02"), 64)
-	maxPosition, _ := strconv.ParseFloat(getEnv("MAX_POSITION_SOL", "0.1"), 64)
-	minLiquidity, _ := strconv.ParseFloat(getEnv("MIN_LIQUIDITY_USD", "10000"), 64)
+	paperBalance, _ := strconv.ParseFloat(getEnv("PORTFOLIO_SIZE_SOL", "3.5"), 64)
+	tradeAmount, _ := strconv.ParseFloat(getEnv("MAX_POSITION_SOL", "0.07"), 64)
+	maxPositions, _ := strconv.Atoi(getEnv("MAX_POSITIONS", "10"))
+	minLiquidity, _ := strconv.ParseFloat(getEnv("MIN_LIQUIDITY_USD", "500"), 64)
 	slippage, _ := strconv.Atoi(getEnv("SLIPPAGE_BPS", "500"))
-	priorityFee, _ := strconv.ParseUint(getEnv("PRIORITY_FEE_LAMPORTS", "100000"), 10, 64)
-
-	maxSlipPct, _ := strconv.ParseFloat(getEnv("MAX_SLIPPAGE_PERCENT", "3.0"), 64)
-	maxLpSharePct, _ := strconv.ParseFloat(getEnv("MAX_LP_SHARE_PERCENT", "1.5"), 64)
-	maxLpDropPct, _ := strconv.ParseFloat(getEnv("MAX_LP_DROP_PERCENT", "30.0"), 64)
-	lpDropWindowSecs, _ := strconv.Atoi(getEnv("LP_DROP_WINDOW_SECONDS", "60"))
-
-	minLPLocked, _ := strconv.ParseFloat(getEnv("MIN_LP_LOCKED_PERCENT", "80"), 64)
-	maxTopHolder, _ := strconv.ParseFloat(getEnv("MAX_TOP_HOLDER_PERCENT", "10"), 64)
-	maxDevWallet, _ := strconv.ParseFloat(getEnv("MAX_DEV_WALLET_PERCENT", "5"), 64)
-	minHolders, _ := strconv.Atoi(getEnv("MIN_HOLDER_COUNT", "100"))
-
-	stopLoss, _ := strconv.ParseFloat(getEnv("STOP_LOSS_PERCENT", "0.5"), 64)
-	trailingStop, _ := strconv.ParseFloat(getEnv("TRAILING_STOP_PERCENT", "0.2"), 64)
+	priorityFee, _ := strconv.ParseUint(getEnv("PRIORITY_FEE_LAMPORTS", "1000000"), 10, 64)
+	stopLoss, _ := strconv.ParseFloat(getEnv("STOP_LOSS_PERCENT", "0.30"), 64)
+	trailingStop, _ := strconv.ParseFloat(getEnv("TRAILING_STOP_PERCENT", "0.25"), 64)
 	timeout, _ := strconv.Atoi(getEnv("TIMEOUT_MINUTES", "30"))
-
 	maxTrades, _ := strconv.Atoi(getEnv("MAX_TRADES_PER_HOUR", "10"))
 	cooldown, _ := strconv.Atoi(getEnv("COOLDOWN_SECONDS", "30"))
-	signalMaxAge, _ := strconv.Atoi(getEnv("SIGNAL_MAX_AGE_MINUTES", "3"))
 
-	distThreshold, _ := strconv.ParseFloat(getEnv("DISTRIBUTION_THRESHOLD", "0.7"), 64)
+	tpLevels := parseFloatSlice(getEnv("TAKE_PROFIT_LEVELS", "1.5,3.0,7.0"))
+	tpPcts := parseFloatSlice(getEnv("TAKE_PROFIT_PERCENTS", "0.33,0.33,0.34"))
+
+	tp1x, tp2x, tp3x := 1.5, 3.0, 7.0
+	if len(tpLevels) >= 3 {
+		tp1x, tp2x, tp3x = tpLevels[0], tpLevels[1], tpLevels[2]
+	}
+	tp1pct, tp2pct, tp3pct := 0.33, 0.33, 0.34
+	if len(tpPcts) >= 3 {
+		tp1pct, tp2pct, tp3pct = tpPcts[0], tpPcts[1], tpPcts[2]
+	}
 
 	return &Config{
-		// Mode
-		PaperTrading:       getEnv("PAPER_TRADING", "true") == "true",
+		PaperTrading: getEnv("PAPER_TRADING", "true") == "true",
 
-		// Telegram
-		TelegramAPIID:      apiID,
-		TelegramAPIHash:    getEnv("TELEGRAM_API_HASH", ""),
-		TelegramBotToken:   getEnv("TELEGRAM_BOT_TOKEN", ""),
-		TelegramChatID:     chatID,
-		TelegramPhone:      getEnv("TELEGRAM_PHONE", ""),
-		MonitoredChannels:  splitEnv("MONITORED_CHANNELS", ","),
+		TelegramBotToken: getEnv("TELEGRAM_BOT_TOKEN", ""),
+		TelegramChatID:   chatID,
 
-		// Solana
 		SolanaRPCURL:        getEnv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com"),
 		SolanaWSURL:         getEnv("SOLANA_WS_URL", "wss://api.mainnet-beta.solana.com"),
-		AdditionalRPCURLs:   splitEnv("SOLANA_ADDITIONAL_RPC_URLS", ","),
+		HeliusAPIKey:        getEnv("HELIUS_API_KEY", ""),
 		PrivateKey:          getEnv("SOLANA_PRIVATE_KEY", ""),
 
-		// Trading
-		PortfolioSize:      portfolioSize,
-		RiskPerTrade:       riskPerTrade,
-		MaxPositionSize:    maxPosition,
-		MinLiquidity:       minLiquidity,
-		SlippageBPS:        slippage,
+		PaperBalance:        paperBalance,
+		TradeAmountSOL:      tradeAmount,
+		MaxPositions:        maxPositions,
+		MinLiquidityUSD:     minLiquidity,
+		SlippageBPS:         slippage,
 		PriorityFeeLamports: priorityFee,
 
-		MaxSlippagePercent:  maxSlipPct,
-		MaxLpSharePercent:   maxLpSharePct,
-		MaxLpDropPercent:    maxLpDropPct,
-		LpDropWindowSeconds: lpDropWindowSecs,
+		RequireMintRevoked:   getEnv("REJECT_MINT_AUTHORITY", "false") == "true",
+		RequireFreezeRevoked: getEnv("REJECT_FREEZE_AUTHORITY", "false") == "true",
 
-		// Safety
-		MinLiquidityLocked:   minLPLocked,
-		MaxTopHolderPercent:  maxTopHolder,
-		MaxDevWalletPercent:  maxDevWallet,
-		MinHolderCount:       minHolders,
-		MaxMintAuthority:     getEnv("REJECT_MINT_AUTHORITY", "true") == "true",
-		MaxFreezeAuthority:   getEnv("REJECT_FREEZE_AUTHORITY", "true") == "true",
+		StopLossPct:     stopLoss,
+		TrailingStopPct: trailingStop,
+		TimeoutMinutes:  timeout,
+		TakeProfit1x:    tp1x,
+		TakeProfit2x:    tp2x,
+		TakeProfit3x:    tp3x,
+		TP1Pct:          tp1pct,
+		TP2Pct:          tp2pct,
+		TP3Pct:          tp3pct,
 
-		// Exit Strategy
-		TakeProfitLevels:    parseFloatSlice(getEnv("TAKE_PROFIT_LEVELS", "2.0,5.0,10.0")),
-		TakeProfitPercents:  parseFloatSlice(getEnv("TAKE_PROFIT_PERCENTS", "0.3,0.3,0.4")),
-		StopLossPercent:     stopLoss,
-		TrailingStopPercent: trailingStop,
-		TimeoutMinutes:      timeout,
-
-		// Wallet Tracking
-		TrackedWallets:        splitEnv("TRACKED_WALLETS", ","),
-		WalletTrackingEnabled: getEnv("WALLET_TRACKING_ENABLED", "true") == "true",
-
-		// Twitter
-		TwitterBearerToken:  getEnv("TWITTER_BEARER_TOKEN", ""),
-		TwitterEnabled:      getEnv("TWITTER_ENABLED", "false") == "true",
-		TwitterKeywords:     splitEnv("TWITTER_KEYWORDS", ","),
-
-		// API Keys
-		BirdeyeAPIKey:       getEnv("BIRDEYE_API_KEY", ""),
-		HeliusAPIKey:        getEnv("HELIUS_API_KEY", ""),
-
-		// Rate Limiting
-		MaxTradesPerHour:    maxTrades,
-		CooldownSeconds:     cooldown,
-		SignalMaxAgeMinutes: signalMaxAge,
-
-		// Flow / distribution exits
-		DistributionThreshold: distThreshold,
-	}, nil
+		MaxTradesPerHour: maxTrades,
+		CooldownSeconds:  cooldown,
+	}
 }
 
 func getEnv(key, defaultVal string) string {
@@ -185,21 +119,6 @@ func getEnv(key, defaultVal string) string {
 		return val
 	}
 	return defaultVal
-}
-
-func splitEnv(key, sep string) []string {
-	val := os.Getenv(key)
-	if val == "" {
-		return []string{}
-	}
-	parts := strings.Split(val, sep)
-	result := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if trimmed := strings.TrimSpace(p); trimmed != "" {
-			result = append(result, trimmed)
-		}
-	}
-	return result
 }
 
 func parseFloatSlice(s string) []float64 {

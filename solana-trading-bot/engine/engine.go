@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -11,7 +10,6 @@ import (
 	"solana-trading-bot/scanner"
 	"solana-trading-bot/storage"
 	"solana-trading-bot/types"
-	"solana-trading-bot/walletscanner"
 	"solana-trading-bot/wallettracker"
 
 	log "github.com/sirupsen/logrus"
@@ -29,12 +27,8 @@ type Engine struct {
 	startBalance     float64    // balance at bot startup — used to compute session P&L
 	sessionStartedAt time.Time  // used to filter session-only wins/losses
 	lastTradeTimes []time.Time
-	seen           map[string]time.Time
-	sigCounts      map[string][]time.Time // tracks how many sources called each address
-	discovered     map[string]bool        // tokens already run through wallet discovery
 	paused         bool
 
-	wscanner *walletscanner.WalletScanner
 	wtracker *wallettracker.Tracker
 
 	signalCh chan types.Signal
@@ -48,13 +42,9 @@ func New(cfg *config.Config) *Engine {
 		store:     storage.New("state.json"),
 		positions:  make(map[string]*types.Position),
 		history:    []types.Trade{},
-		seen:       make(map[string]time.Time),
-		sigCounts:  make(map[string][]time.Time),
-		discovered: make(map[string]bool),
 		signalCh:   make(chan types.Signal, 100),
 		alertCh:    make(chan string, 100),
 	}
-	e.wscanner = walletscanner.New(cfg)
 	e.wtracker = wallettracker.New(cfg, e.signalCh)
 
 	if state, err := e.store.Load(); err == nil {
@@ -290,62 +280,6 @@ func (e *Engine) enrichPosition(ctx context.Context, address string) {
 	}
 }
 
-// tryReentry re-enters a token at half position size when a channel keeps posting
-// achievements for it but we're no longer holding it (stopped out or timed out).
-func (e *Engine) tryReentry(ctx context.Context, sig types.Signal) {
-	e.mu.Lock()
-	// Find address from recent trade history by symbol
-	var addr string
-	for i := len(e.history) - 1; i >= 0; i-- {
-		t := e.history[i]
-		if time.Since(t.ClosedAt) > 2*time.Hour {
-			break
-		}
-		if strings.EqualFold(t.Symbol, sig.Symbol) {
-			addr = t.Address
-			break
-		}
-	}
-	if addr == "" {
-		e.mu.Unlock()
-		return
-	}
-	// Already holding or seen recently
-	if _, inPos := e.positions[addr]; inPos {
-		e.mu.Unlock()
-		return
-	}
-	posCount := len(e.positions)
-	bal := e.balance
-	// Clear seen map to allow re-entry
-	delete(e.seen, addr)
-	e.mu.Unlock()
-
-	halfAmount := e.cfg.TradeAmountSOL / 2
-	if posCount >= e.cfg.MaxPositions || bal < halfAmount {
-		return
-	}
-
-	price, _ := e.getPriceRace(ctx, addr)
-	if price == 0 {
-		return
-	}
-
-	log.WithFields(log.Fields{
-		"symbol": sig.Symbol,
-		"mult":   fmt.Sprintf("%.1fx", sig.Multiplier),
-		"source": sig.Source,
-	}).Info("Re-entry — channel still pumping")
-
-	reSig := types.Signal{
-		Address:   addr,
-		Source:    sig.Source,
-		Message:   fmt.Sprintf("re-entry: %.1fx achievement", sig.Multiplier),
-		Timestamp: time.Now(),
-	}
-	e.enterPosition(ctx, reSig, price, halfAmount)
-}
-
 // --- Position monitoring --------------------------------------------------
 
 func (e *Engine) monitorPositions(ctx context.Context) {
@@ -511,74 +445,6 @@ func (e *Engine) recordPartialClose(pos types.Position, price float64, sellPct f
 	))
 }
 
-// discoverWallets finds profitable wallets from a pumped token and adds them to tracking.
-func (e *Engine) discoverWallets(ctx context.Context, symbol string) {
-	addr := e.findAddressForSymbol(symbol)
-	if addr == "" {
-		return
-	}
-
-	e.mu.Lock()
-	if e.discovered[addr] {
-		e.mu.Unlock()
-		return
-	}
-	e.discovered[addr] = true
-	e.mu.Unlock()
-
-	discCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	wallets := e.wscanner.DiscoverFromToken(discCtx, addr)
-	for _, w := range wallets {
-		e.wtracker.AddWallet(w)
-	}
-	if len(wallets) > 0 {
-		e.sendAlert(fmt.Sprintf(
-			"🔍 Discovered *%d* profitable wallets from %s — now copy-trading them",
-			len(wallets), symbol,
-		))
-	}
-}
-
-// findAddressForSymbol returns the token mint address for a symbol by checking
-// open positions and recent trade history.
-func (e *Engine) findAddressForSymbol(symbol string) string {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	for addr, pos := range e.positions {
-		if strings.EqualFold(pos.Symbol, symbol) {
-			return addr
-		}
-	}
-	for i := len(e.history) - 1; i >= 0; i-- {
-		t := e.history[i]
-		if time.Since(t.ClosedAt) > 4*time.Hour {
-			break
-		}
-		if strings.EqualFold(t.Symbol, symbol) {
-			return t.Address
-		}
-	}
-	return ""
-}
-
-// recordSignal adds a signal timestamp for the address and returns the count
-// of signals seen in the last 5 minutes. Must be called with e.mu held.
-func (e *Engine) recordSignal(addr string) int {
-	cutoff := time.Now().Add(-5 * time.Minute)
-	times := e.sigCounts[addr]
-	fresh := times[:0]
-	for _, t := range times {
-		if t.After(cutoff) {
-			fresh = append(fresh, t)
-		}
-	}
-	fresh = append(fresh, time.Now())
-	e.sigCounts[addr] = fresh
-	return len(fresh)
-}
-
 // --- Helpers --------------------------------------------------------------
 
 // sessionPnL returns the net profit/loss since bot startup.
@@ -717,17 +583,6 @@ func (e *Engine) AddTrackedWallet(address string) {
 
 func (e *Engine) GetTrackedWallets() []string {
 	return e.wtracker.GetWallets()
-}
-
-func (e *Engine) AddChannel(channel string) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	for _, ch := range e.cfg.MonitoredChannels {
-		if ch == channel {
-			return
-		}
-	}
-	e.cfg.MonitoredChannels = append(e.cfg.MonitoredChannels, channel)
 }
 
 func (e *Engine) InjectSignal(address, source string) {
