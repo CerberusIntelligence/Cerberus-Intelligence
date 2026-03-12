@@ -111,6 +111,8 @@ func (b *Bot) handleCommand(msg *tgbotapi.Message) {
 	switch cmd {
 	case "start", "help":
 		b.cmdHelp()
+	case "report":
+		b.cmdReport()
 	case "status":
 		b.cmdStatus()
 	case "positions", "pos":
@@ -183,6 +185,7 @@ func (b *Bot) cmdHelp() {
 	b.send(`🤖 *Mirror Bot Commands*
 
 /status — balance, PnL, win rate
+/report — today's P&L by wallet
 /positions — open positions
 /history — last 10 trades
 /params — current settings
@@ -241,6 +244,88 @@ func (b *Bot) cmdStatus() {
 		winRate, wins, losses,
 		len(positions),
 	))
+}
+
+func (b *Bot) cmdReport() {
+	_, _, history := b.engine.GetStatus()
+	wallets := b.engine.GetTrackedWallets()
+
+	// Filter to today's closed trades
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+
+	type walletStats struct {
+		wins, losses int
+		pnl          float64
+	}
+	stats := make(map[string]*walletStats)
+	totalWins, totalLosses := 0, 0
+	totalPnL := 0.0
+
+	for _, t := range history {
+		if t.ClosedAt.Before(today) {
+			continue
+		}
+		src := t.Source
+		if stats[src] == nil {
+			stats[src] = &walletStats{}
+		}
+		stats[src].pnl += t.PnLSOL
+		totalPnL += t.PnLSOL
+		if t.PnLSOL > 0 {
+			stats[src].wins++
+			totalWins++
+		} else if t.PnLSOL < 0 {
+			stats[src].losses++
+			totalLosses++
+		}
+	}
+
+	totalEmoji := "🟢"
+	if totalPnL < 0 {
+		totalEmoji = "🔴"
+	}
+
+	msg := fmt.Sprintf(
+		"📊 *Daily Report* (%s)\n%s Total: `%+.4f SOL` | ✅ %dW / ❌ %dL\n\n👛 *By Wallet*\n",
+		now.Format("Jan 2 15:04"),
+		totalEmoji, totalPnL, totalWins, totalLosses,
+	)
+
+	// Build short-prefix → full address map
+	addrMap := make(map[string]string)
+	for _, addr := range wallets {
+		if len(addr) >= 8 {
+			addrMap["wallet:"+addr[:8]] = addr
+		}
+	}
+
+	// List wallets that traded today
+	shown := make(map[string]bool)
+	for src, s := range stats {
+		shown[src] = true
+		emoji := "🟢"
+		if s.pnl < 0 {
+			emoji = "🔴"
+		} else if s.pnl == 0 {
+			emoji = "⚪"
+		}
+		label := src
+		if full, ok := addrMap[src]; ok {
+			label = full[:12] + "..."
+		}
+		msg += fmt.Sprintf("%s `%s` — `%+.4f SOL` (%dW/%dL)\n", emoji, label, s.pnl, s.wins, s.losses)
+	}
+
+	// List wallets with no trades today
+	for _, addr := range wallets {
+		src := "wallet:" + addr[:8]
+		if !shown[src] {
+			msg += fmt.Sprintf("⚪ `%s...` — no trades today\n", addr[:12])
+		}
+	}
+
+	b.send(msg)
 }
 
 func (b *Bot) cmdPositions() {

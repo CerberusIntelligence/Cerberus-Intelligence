@@ -195,17 +195,17 @@ func (t *Tracker) runWebSocket(ctx context.Context) error {
 func (t *Tracker) processTx(ctx context.Context, walletAddr, signature string) {
 	var transfers []tokenTransfer
 
-	// Try immediately, retry up to 5 times with 200ms between attempts
-	for attempt := 0; attempt < 5; attempt++ {
+	// Retry up to 10 times with 800ms between attempts to allow confirmed commitment
+	for attempt := 0; attempt < 10; attempt++ {
 		if attempt > 0 {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(200 * time.Millisecond):
+			case <-time.After(800 * time.Millisecond):
 			}
 		}
 
-		txCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+		txCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		tt, err := t.fetchTx(txCtx, walletAddr, signature)
 		cancel()
 
