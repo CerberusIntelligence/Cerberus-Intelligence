@@ -12,6 +12,10 @@ type Config struct {
 	BirdeyeAPIKey string
 	HeliusAPIKey  string
 
+	// Telegram
+	TelegramToken  string
+	TelegramChatID string
+
 	// Filter thresholds
 	MinTrades        int     // minimum completed trades in history (Birdeye)
 	MinWinCount      int     // minimum number of actual winning positions (Helius)
@@ -53,6 +57,8 @@ func Load() *Config {
 	return &Config{
 		BirdeyeAPIKey:      getEnv("BIRDEYE_API_KEY", ""),
 		HeliusAPIKey:       getEnv("HELIUS_API_KEY", ""),
+		TelegramToken:      getEnv("TELEGRAM_BOT_TOKEN", ""),
+		TelegramChatID:     getEnv("TELEGRAM_CHAT_ID", ""),
 		MinTrades:          minTrades,
 		MinWinCount:        minWinCount,
 		MinWinDays:         minWinDays,

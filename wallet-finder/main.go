@@ -11,10 +11,12 @@ import (
 
 	"wallet-finder/analyzer"
 	"wallet-finder/api"
+	"wallet-finder/botmode"
 	"wallet-finder/config"
 	"wallet-finder/models"
 	"wallet-finder/output"
 	"wallet-finder/scorer"
+	"wallet-finder/telegram"
 )
 
 func main() {
@@ -23,6 +25,7 @@ func main() {
 	minHistory := flag.Int("min-history", 0, "Override MIN_HISTORY_DAYS (e.g. 30)")
 	topN := flag.Int("top", 0, "Override TOP_N (e.g. 100)")
 	exportBot := flag.Bool("export-bot", false, "Export top wallets to bot's tracked_wallets.json")
+	botMode := flag.Bool("bot", false, "Run as Telegram bot — listen for commands")
 	flag.Parse()
 
 	cfg := config.Load()
@@ -58,6 +61,23 @@ func main() {
 
 	birdeye := api.NewBirdeye(cfg.BirdeyeAPIKey)
 	helius := api.NewHelius(cfg.HeliusAPIKey)
+
+	// Set up Telegram if configured
+	var tg *telegram.Client
+	if cfg.TelegramToken != "" && cfg.TelegramChatID != "" {
+		tg = telegram.NewClient(cfg.TelegramToken, cfg.TelegramChatID)
+		fmt.Println("[✓] Telegram notifications enabled")
+	}
+
+	// Bot mode: listen for Telegram commands and handle them interactively
+	if *botMode {
+		if tg == nil {
+			fmt.Fprintln(os.Stderr, "[✗] TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set in .env for bot mode")
+			os.Exit(1)
+		}
+		botmode.Listen(cfg, tg)
+		return
+	}
 
 	fmt.Println("╔══════════════════════════════════════════════════╗")
 	fmt.Println("║        SOLANA WALLET FINDER  (Go edition)        ║")
@@ -222,6 +242,9 @@ score:
 	if len(analyses) == 0 {
 		fmt.Println("[!] No wallets survived all filters.")
 		fmt.Println("    Try lowering MIN_WIN_RATE or MIN_HISTORY_DAYS in .env")
+		if tg != nil {
+			_ = tg.Send("🔍 *SOL Wallet Finder* — No qualifying wallets found today. Try again later.")
+		}
 		os.Exit(0)
 	}
 
@@ -231,6 +254,17 @@ score:
 
 	if err := output.SaveJSON(ranked, cfg.OutputFile); err != nil {
 		fmt.Fprintf(os.Stderr, "[!] Could not save JSON: %v\n", err)
+	}
+
+	// ── Send results to Telegram ─────────────────────────────────────────────
+	if tg != nil {
+		date := time.Now().Format("2006-01-02")
+		msg := output.FormatTelegram(ranked, date)
+		if err := tg.SendChunked(msg); err != nil {
+			fmt.Fprintf(os.Stderr, "[!] Telegram send failed: %v\n", err)
+		} else {
+			fmt.Println("[✓] Results sent to Telegram")
+		}
 	}
 
 	if cfg.ExportForBot {

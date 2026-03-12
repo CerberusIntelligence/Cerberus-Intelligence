@@ -70,6 +70,32 @@ func ExportForBot(ranked []models.RankedWallet, path string) error {
 	return nil
 }
 
+// FormatTelegram formats the ranked wallet list as a Telegram message.
+func FormatTelegram(ranked []models.RankedWallet, date string) string {
+	if len(ranked) == 0 {
+		return "🔍 *SOL Wallet Finder* — " + date + "\n\nNo qualifying wallets found today. Try again later."
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("🔍 *SOL Wallet Finder* — %s\n", date))
+	sb.WriteString(fmt.Sprintf("Found *%d* qualifying wallets:\n\n", len(ranked)))
+
+	for _, w := range ranked {
+		sb.WriteString(fmt.Sprintf("*#%d* `%s`\n", w.Rank, w.Address))
+		sb.WriteString(fmt.Sprintf(
+			"  Score: %.1f | WR: %.1f%% | PnL: $%.0f\n",
+			w.Score, w.WinRate, w.TotalPnLUSD,
+		))
+		sb.WriteString(fmt.Sprintf(
+			"  Wins: %d | Weeks: %d | AvgWin: %.3f◎ | Top1%%: %.0f%% | Idle: %dd\n\n",
+			w.WinCount, w.WinWeeks, w.AvgWinSOL, w.TopWinPct, w.DaysSinceActive,
+		))
+	}
+
+	sb.WriteString("Reply with the addresses you want added to the bot.")
+	return sb.String()
+}
+
 // PrintSummary prints a short summary after the table.
 func PrintSummary(ranked []models.RankedWallet) {
 	if len(ranked) == 0 {
