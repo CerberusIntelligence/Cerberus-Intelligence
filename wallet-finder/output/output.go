@@ -1,0 +1,88 @@
+package output
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+
+	"wallet-finder/models"
+)
+
+// PrintTable prints a human-readable ranked table to stdout.
+func PrintTable(ranked []models.RankedWallet) {
+	fmt.Println()
+	fmt.Println("══════════════════════════════════════════════════════════════════════════════════════════════════════════════")
+	fmt.Printf("  %-4s  %-44s  %6s  %7s  %9s  %4s  %4s  %4s  %6s  %6s  %6s\n",
+		"Rank", "Wallet Address", "Score", "WinRate", "PnL USD", "Wins", "WDys", "WWks", "AvgW", "Top1%", "Idle")
+	fmt.Println("────────────────────────────────────────────────────────────────────────────────────────────────────────────────────")
+	for _, w := range ranked {
+		fmt.Printf("  #%-3d  %-44s  %6.2f  %6.1f%%  %+9.0f  %4d  %4d  %4d  %5.2f◎  %5.1f%%  %4dd\n",
+			w.Rank, w.Address, w.Score, w.WinRate, w.TotalPnLUSD,
+			w.WinCount, w.WinDays, w.WinWeeks, w.AvgWinSOL, w.TopWinPct, w.DaysSinceActive,
+		)
+	}
+	fmt.Println("════════════════════════════════════════════════════════════════════════════════════════════════════════════════════")
+	fmt.Printf("  Wins=winning trades  WDys=days with wins  WWks=weeks with wins  AvgW=avg win in SOL  Top1%%=biggest win %% of total PnL (low=better)\n\n")
+}
+
+// SaveJSON writes the ranked wallet list to a JSON file.
+func SaveJSON(ranked []models.RankedWallet, path string) error {
+	data, err := json.MarshalIndent(ranked, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("failed to write %s: %w", path, err)
+	}
+	fmt.Printf("[+] Results saved to %s\n", path)
+	return nil
+}
+
+// ExportForBot writes a bot-compatible tracked_wallets.json where
+// keys are wallet addresses and values are descriptive labels.
+func ExportForBot(ranked []models.RankedWallet, path string) error {
+	// Load existing file if present so we don't wipe existing wallets
+	existing := make(map[string]string)
+	if data, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(data, &existing)
+	}
+
+	added := 0
+	for _, w := range ranked {
+		if _, ok := existing[w.Address]; !ok {
+			label := fmt.Sprintf("auto-found: score=%.1f wr=%.1f%% hist=%dd",
+				w.Score, w.WinRate, w.HistoryDays)
+			existing[w.Address] = label
+			added++
+		}
+	}
+
+	data, err := json.MarshalIndent(existing, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("failed to write bot wallets file %s: %w", path, err)
+	}
+
+	fmt.Printf("[+] Added %d new wallets to bot file: %s\n", added, path)
+	return nil
+}
+
+// PrintSummary prints a short summary after the table.
+func PrintSummary(ranked []models.RankedWallet) {
+	if len(ranked) == 0 {
+		fmt.Println("[!] No wallets passed the filters. Try relaxing MIN_WIN_RATE or MIN_TRADES.")
+		return
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("[✓] Found %d qualifying wallets\n", len(ranked)))
+	if len(ranked) > 0 {
+		best := ranked[0]
+		sb.WriteString(fmt.Sprintf("    Best: %s  score=%.2f  wr=%.1f%%  %d days history\n",
+			best.Address, best.Score, best.WinRate, best.HistoryDays))
+	}
+	fmt.Print(sb.String())
+}
