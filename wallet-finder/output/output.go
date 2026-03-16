@@ -79,7 +79,7 @@ func ExportForBot(ranked []models.RankedWallet, path string) error {
 	return nil
 }
 
-// FormatTelegram formats the ranked wallet list as a Telegram message.
+// FormatTelegram formats the ranked wallet list as a Telegram message with clickable links.
 func FormatTelegram(ranked []models.RankedWallet, date string) string {
 	if len(ranked) == 0 {
 		return "🔍 *SOL Wallet Finder* — " + date + "\n\nNo qualifying wallets found today. Try again later."
@@ -87,21 +87,28 @@ func FormatTelegram(ranked []models.RankedWallet, date string) string {
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("🔍 *SOL Wallet Finder* — %s\n", date))
-	sb.WriteString(fmt.Sprintf("Found *%d* qualifying wallets:\n\n", len(ranked)))
+	sb.WriteString(fmt.Sprintf("Found *%d* wallets — tap address to open, copy from browser:\n\n", len(ranked)))
 
 	for _, w := range ranked {
-		sb.WriteString(fmt.Sprintf("*#%d* `%s`\n", w.Rank, w.Address))
+		holdStr := "n/a"
+		if w.AvgHoldSeconds > 0 {
+			mins := w.AvgHoldSeconds / 60
+			if mins >= 60 {
+				holdStr = fmt.Sprintf("%.1fh", mins/60)
+			} else {
+				holdStr = fmt.Sprintf("%.0fm", mins)
+			}
+		}
 		sb.WriteString(fmt.Sprintf(
-			"  Score: %.1f | WR: %.1f%% | PnL: $%.0f\n",
-			w.Score, w.WinRate, w.TotalPnLUSD,
+			"*#%d* [%s](https://gmgn.ai/sol/address/%s)\n",
+			w.Rank, w.Address, w.Address,
 		))
 		sb.WriteString(fmt.Sprintf(
-			"  Wins: %d | Weeks: %d | AvgWin: %.3f◎ | Top1%%: %.0f%% | Idle: %dd\n\n",
-			w.WinCount, w.WinWeeks, w.AvgWinSOL, w.TopWinPct, w.DaysSinceActive,
+			"  ROI: +%.0f%%  |  AvgWin: %.2f◎  |  Wins: %d  |  Hold: %s  |  PnL: $%.0f\n\n",
+			w.AvgWinReturnPct, w.AvgWinSOL, w.WinCount, holdStr, w.TotalPnLUSD,
 		))
 	}
 
-	sb.WriteString("Reply with the addresses you want added to the bot.")
 	return sb.String()
 }
 

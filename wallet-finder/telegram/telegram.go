@@ -26,10 +26,11 @@ func NewClient(token, chatID string) *Client {
 
 func (c *Client) Send(text string) error {
 	url := fmt.Sprintf("%s%s/sendMessage", apiBase, c.token)
-	payload := map[string]string{
-		"chat_id":    c.chatID,
-		"text":       text,
-		"parse_mode": "Markdown",
+	payload := map[string]interface{}{
+		"chat_id":                  c.chatID,
+		"text":                     text,
+		"parse_mode":               "Markdown",
+		"disable_web_page_preview": true,
 	}
 	body, _ := json.Marshal(payload)
 	resp, err := c.http.Post(url, "application/json", bytes.NewReader(body))
