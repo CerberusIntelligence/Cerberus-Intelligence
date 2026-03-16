@@ -27,6 +27,7 @@ type Config struct {
 	MinProfitFactor  float64 // total_wins / abs(total_losses) — must exceed 1.0
 	MinPeriodPnLUSD  float64 // minimum Birdeye period PnL in USD (filters low/negative all-time wallets)
 	MinHeliusPnLSOL  float64 // minimum SOL profit from Helius-analyzed trades (must be positive)
+	MinHoldSeconds   int     // minimum hold time in seconds for a win to count (filters bots/flippers)
 
 	// Discovery
 	DiscoveryBatchSize int // how many candidates to pull from each leaderboard period
@@ -54,6 +55,7 @@ func Load() *Config {
 	minProfitFactor, _ := strconv.ParseFloat(getEnv("MIN_PROFIT_FACTOR", "1.2"), 64)
 	minPeriodPnLUSD, _ := strconv.ParseFloat(getEnv("MIN_PERIOD_PNL_USD", "50000"), 64)
 	minHeliusPnLSOL, _ := strconv.ParseFloat(getEnv("MIN_HELIUS_PNL_SOL", "5"), 64)
+	minHoldSeconds, _ := strconv.Atoi(getEnv("MIN_HOLD_SECONDS", "60"))
 	discoveryBatch, _ := strconv.Atoi(getEnv("DISCOVERY_BATCH", "200"))
 	heliusTxLimit, _ := strconv.Atoi(getEnv("HELIUS_TX_LIMIT", "500"))
 	topN, _ := strconv.Atoi(getEnv("TOP_N", "20"))
@@ -73,6 +75,7 @@ func Load() *Config {
 		MinProfitFactor:    minProfitFactor,
 		MinPeriodPnLUSD:    minPeriodPnLUSD,
 		MinHeliusPnLSOL:    minHeliusPnLSOL,
+		MinHoldSeconds:     minHoldSeconds,
 		DiscoveryBatchSize: discoveryBatch,
 		HeliusTxLimit:      heliusTxLimit,
 		TopN:               topN,

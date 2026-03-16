@@ -107,6 +107,7 @@ func rankBy(analyses []*models.WalletAnalysis, topN int, less func(a, b *models.
 			ConsistencyScore: math.Round(wa.ConsistencyScore*100) / 100,
 			HistoryDays:      wa.HistoryDays,
 			DaysSinceActive:  wa.DaysSinceActive,
+			AvgHoldSeconds:   math.Round(wa.AvgHoldSeconds),
 			MonthlyWinRates:  wa.MonthlyStats,
 		})
 	}

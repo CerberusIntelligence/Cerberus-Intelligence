@@ -37,36 +37,40 @@ func NewGMGN() *GMGNClient {
 
 // gmgnRawWallet is the raw shape GMGN returns (profits as strings).
 type gmgnRawWallet struct {
-	Address           string   `json:"address"`
-	LastActive        int64    `json:"last_active"`
-	RealizedProfit7d  string   `json:"realized_profit_7d"`
-	RealizedProfit30d string   `json:"realized_profit_30d"`
-	Buy               int      `json:"buy"`
-	Buy7d             int      `json:"buy_7d"`
-	Buy30d            int      `json:"buy_30d"`
-	Sell              int      `json:"sell"`
-	Sell7d            int      `json:"sell_7d"`
-	Sell30d           int      `json:"sell_30d"`
-	Winrate7d         float64  `json:"winrate_7d"`
-	Winrate30d        float64  `json:"winrate_30d"`
-	Tags              []string `json:"tags"`
+	Address              string   `json:"address"`
+	LastActive           int64    `json:"last_active"`
+	RealizedProfit7d     string   `json:"realized_profit_7d"`
+	RealizedProfit30d    string   `json:"realized_profit_30d"`
+	Buy                  int      `json:"buy"`
+	Buy7d                int      `json:"buy_7d"`
+	Buy30d               int      `json:"buy_30d"`
+	Sell                 int      `json:"sell"`
+	Sell7d               int      `json:"sell_7d"`
+	Sell30d              int      `json:"sell_30d"`
+	Winrate7d            float64  `json:"winrate_7d"`
+	Winrate30d           float64  `json:"winrate_30d"`
+	AvgHoldingPeriod7d   float64  `json:"avg_holding_period_7d"`  // seconds
+	AvgHoldingPeriod30d  float64  `json:"avg_holding_period_30d"` // seconds
+	Tags                 []string `json:"tags"`
 }
 
 // GMGNWallet is the parsed, usable wallet entry from GMGN's rank API.
 type GMGNWallet struct {
-	Address           string
-	LastActiveTime    int64
-	RealizedProfit7d  float64
-	RealizedProfit30d float64
-	Buy7d             int
-	Buy30d            int
-	Sell7d            int
-	Sell30d           int
-	Buy               int
-	Sell              int
-	Winrate7d         float64
-	Winrate30d        float64
-	Tags              []string
+	Address              string
+	LastActiveTime       int64
+	RealizedProfit7d     float64
+	RealizedProfit30d    float64
+	Buy7d                int
+	Buy30d               int
+	Sell7d               int
+	Sell30d              int
+	Buy                  int
+	Sell                 int
+	Winrate7d            float64
+	Winrate30d           float64
+	AvgHoldingPeriod7d   float64 // seconds
+	AvgHoldingPeriod30d  float64 // seconds
+	Tags                 []string
 }
 
 type gmgnRankResponse struct {
@@ -97,9 +101,11 @@ func convertRaw(r gmgnRawWallet) GMGNWallet {
 		Sell30d:           r.Sell30d,
 		Buy:               r.Buy,
 		Sell:              r.Sell,
-		Winrate7d:         r.Winrate7d,
-		Winrate30d:        r.Winrate30d,
-		Tags:              r.Tags,
+		Winrate7d:           r.Winrate7d,
+		Winrate30d:          r.Winrate30d,
+		AvgHoldingPeriod7d:  r.AvgHoldingPeriod7d,
+		AvgHoldingPeriod30d: r.AvgHoldingPeriod30d,
+		Tags:                r.Tags,
 	}
 }
 

@@ -29,10 +29,11 @@ type WalletAnalysis struct {
 	TopWinPct       float64 // % of total PnL from the single biggest win (scraper signal)
 
 	// From Helius (transaction history)
-	HistoryDays     int     // days between first and last observed trade
-	DaysSinceActive int     // days since the last trade
-	SwapCount       int     // total SWAP txs fetched from Helius
-	MonthlyStats    []MonthlyStats
+	HistoryDays      int     // days between first and last observed trade
+	DaysSinceActive  int     // days since the last trade
+	SwapCount        int     // total SWAP txs fetched from Helius
+	AvgHoldSeconds   float64 // average hold time of winning positions in seconds
+	MonthlyStats     []MonthlyStats
 
 	// Derived scoring components (each 0–1)
 	ConsistencyScore float64 // stability of monthly win rates
@@ -57,6 +58,7 @@ type RankedWallet struct {
 	AvgWinSOL        float64        `json:"avg_win_sol"`
 	AvgLossSOL       float64        `json:"avg_loss_sol"`
 	TopWinPct        float64        `json:"top_win_pct"`
+	AvgHoldSeconds   float64        `json:"avg_hold_seconds"`
 	PeriodCount      int            `json:"period_count"`
 	ConsistencyScore float64        `json:"consistency_score"`
 	HistoryDays      int            `json:"history_days"`

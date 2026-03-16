@@ -17,10 +17,12 @@ const (
 )
 
 type tokenFlow struct {
-	solIn  float64
-	solOut float64
-	sold   bool
-	day    string // YYYY-MM-DD of last activity
+	solIn    float64
+	solOut   float64
+	sold     bool
+	day      string // YYYY-MM-DD of last activity
+	buyTime  int64  // unix timestamp of first buy
+	sellTime int64  // unix timestamp of last sell
 }
 
 func AnalyzeHistory(address string, txs []api.HeliusTx, candidate api.BirdeyeCandidate) *models.WalletAnalysis {
@@ -62,6 +64,9 @@ func AnalyzeHistory(address string, txs []api.HeliusTx, candidate api.BirdeyeCan
 			}
 			flows[token].solIn += math.Abs(solDelta)
 			flows[token].day = day
+			if flows[token].buyTime == 0 {
+				flows[token].buyTime = tx.Timestamp
+			}
 		} else if solDelta > minSolThresh {
 			token := sentToken(tx, address)
 			if token == "" || token == wsolMint {
@@ -73,6 +78,7 @@ func AnalyzeHistory(address string, txs []api.HeliusTx, candidate api.BirdeyeCan
 			flows[token].solOut += solDelta
 			flows[token].sold = true
 			flows[token].day = day
+			flows[token].sellTime = tx.Timestamp
 		}
 	}
 
@@ -84,6 +90,7 @@ func AnalyzeHistory(address string, txs []api.HeliusTx, candidate api.BirdeyeCan
 
 	var winAmounts []float64
 	var lossAmounts []float64
+	var holdTimes []float64
 	totalPnL := 0.0
 	biggestWin := 0.0
 
@@ -92,6 +99,19 @@ func AnalyzeHistory(address string, txs []api.HeliusTx, candidate api.BirdeyeCan
 			continue
 		}
 		pnl := f.solOut - f.solIn
+
+		// Compute hold duration in seconds
+		holdSecs := int64(0)
+		if f.buyTime > 0 && f.sellTime > 0 {
+			holdSecs = f.sellTime - f.buyTime
+		}
+
+		// Discard wins held less than 60 seconds — bots and snipers flip in
+		// seconds; real traders hold. Losses are allowed to be short (stop-loss).
+		if pnl >= 0 && holdSecs > 0 && holdSecs < 60 {
+			continue
+		}
+
 		totalPnL += pnl
 
 		month := f.day[:7] // YYYY-MM
@@ -102,9 +122,12 @@ func AnalyzeHistory(address string, txs []api.HeliusTx, candidate api.BirdeyeCan
 		if pnl >= 0 {
 			wa.WinCount++
 			winAmounts = append(winAmounts, pnl)
+			if holdSecs > 0 {
+				holdTimes = append(holdTimes, float64(holdSecs))
+			}
 			winDaySet[f.day] = true
 			// ISO week key: YYYY-Www
-			t := time.Unix(0, 0) // placeholder, compute from day string
+			t := time.Unix(0, 0)
 			if parsed, err := time.Parse("2006-01-02", f.day); err == nil {
 				t = parsed
 			}
@@ -119,6 +142,14 @@ func AnalyzeHistory(address string, txs []api.HeliusTx, candidate api.BirdeyeCan
 			lossAmounts = append(lossAmounts, math.Abs(pnl))
 			months[month].losses++
 		}
+	}
+
+	if len(holdTimes) > 0 {
+		sum := 0.0
+		for _, h := range holdTimes {
+			sum += h
+		}
+		wa.AvgHoldSeconds = sum / float64(len(holdTimes))
 	}
 
 	total := wa.WinCount + wa.LossCount

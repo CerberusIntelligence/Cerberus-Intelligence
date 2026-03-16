@@ -251,6 +251,16 @@ func main() {
 			if trades < cfg.MinTrades {
 				continue
 			}
+			// Must be a holder, not a flipper — GMGN avg hold must exceed minimum
+			if cfg.MinHoldSeconds > 0 {
+				hold := w.AvgHoldingPeriod30d
+				if hold == 0 {
+					hold = w.AvgHoldingPeriod7d
+				}
+				if hold > 0 && hold < float64(cfg.MinHoldSeconds) {
+					continue
+				}
+			}
 			gmgnFiltered = append(gmgnFiltered, w)
 		}
 		fmt.Printf("    After pre-filter: %d candidates\n\n", len(gmgnFiltered))
@@ -302,8 +312,12 @@ func main() {
 			}
 
 			wa := analyzer.AnalyzeHistory(gw.Address, txs, bc)
-			fmt.Printf("  swaps=%d  wr=%.1f%%  wins=%d  wdays=%d  pnl=%.2f◎",
-				wa.SwapCount, wa.BirdeyeWinRate*100, wa.WinCount, wa.WinDays, wa.TotalPnLSOL)
+			holdStr := "n/a"
+			if wa.AvgHoldSeconds > 0 {
+				holdStr = fmt.Sprintf("%.0fm", wa.AvgHoldSeconds/60)
+			}
+			fmt.Printf("  swaps=%d  wr=%.1f%%  wins=%d  wdays=%d  hold=%s  pnl=%.2f◎",
+				wa.SwapCount, wa.BirdeyeWinRate*100, wa.WinCount, wa.WinDays, holdStr, wa.TotalPnLSOL)
 
 			if !*noFilter {
 				if bc.PnL < cfg.MinPeriodPnLUSD {

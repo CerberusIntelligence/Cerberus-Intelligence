@@ -12,18 +12,27 @@ import (
 // PrintTable prints a human-readable ranked table to stdout.
 func PrintTable(ranked []models.RankedWallet) {
 	fmt.Println()
-	fmt.Println("══════════════════════════════════════════════════════════════════════════════════════════════════════════════")
-	fmt.Printf("  %-4s  %-44s  %6s  %7s  %9s  %4s  %4s  %4s  %6s  %6s  %6s\n",
-		"Rank", "Wallet Address", "Score", "WinRate", "PnL USD", "Wins", "WDys", "WWks", "AvgW", "Top1%", "Idle")
-	fmt.Println("────────────────────────────────────────────────────────────────────────────────────────────────────────────────────")
+	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════")
+	fmt.Printf("  %-4s  %-44s  %6s  %7s  %9s  %4s  %4s  %4s  %6s  %6s  %7s  %6s\n",
+		"Rank", "Wallet Address", "Score", "WinRate", "PnL USD", "Wins", "WDys", "WWks", "AvgW", "Top1%", "AvgHold", "Idle")
+	fmt.Println("───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────")
 	for _, w := range ranked {
-		fmt.Printf("  #%-3d  %-44s  %6.2f  %6.1f%%  %+9.0f  %4d  %4d  %4d  %5.2f◎  %5.1f%%  %4dd\n",
+		holdStr := "  n/a  "
+		if w.AvgHoldSeconds > 0 {
+			mins := w.AvgHoldSeconds / 60
+			if mins >= 60 {
+				holdStr = fmt.Sprintf("%5.1fh  ", mins/60)
+			} else {
+				holdStr = fmt.Sprintf("%5.0fm  ", mins)
+			}
+		}
+		fmt.Printf("  #%-3d  %-44s  %6.2f  %6.1f%%  %+9.0f  %4d  %4d  %4d  %5.2f◎  %5.1f%%  %s %4dd\n",
 			w.Rank, w.Address, w.Score, w.WinRate, w.TotalPnLUSD,
-			w.WinCount, w.WinDays, w.WinWeeks, w.AvgWinSOL, w.TopWinPct, w.DaysSinceActive,
+			w.WinCount, w.WinDays, w.WinWeeks, w.AvgWinSOL, w.TopWinPct, holdStr, w.DaysSinceActive,
 		)
 	}
-	fmt.Println("════════════════════════════════════════════════════════════════════════════════════════════════════════════════════")
-	fmt.Printf("  Wins=winning trades  WDys=days with wins  WWks=weeks with wins  AvgW=avg win in SOL  Top1%%=biggest win %% of total PnL (low=better)\n\n")
+	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════")
+	fmt.Printf("  Wins=winning trades  WDys=days with wins  WWks=weeks with wins  AvgW=avg win SOL  AvgHold=avg hold time of wins  Top1%%=scraper signal\n\n")
 }
 
 // SaveJSON writes the ranked wallet list to a JSON file.
