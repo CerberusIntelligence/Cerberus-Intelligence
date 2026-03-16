@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,8 +19,19 @@ type GMGNClient struct {
 }
 
 func NewGMGN() *GMGNClient {
+	// Force HTTP/1.1 by disabling HTTP/2 — Cloudflare treats Go's HTTP/2
+	// TLS fingerprint as a bot. HTTP/1.1 matches curl's default behavior.
+	transport := &http.Transport{
+		TLSNextProto: make(map[string]func(string, *tls.Conn) http.RoundTripper),
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		},
+	}
 	return &GMGNClient{
-		http: &http.Client{Timeout: 30 * time.Second},
+		http: &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: transport,
+		},
 	}
 }
 
@@ -99,12 +111,32 @@ func (g *GMGNClient) newRequest(ctx context.Context, url string) (*http.Request,
 	if err != nil {
 		return nil, err
 	}
+	// Full Chrome 122 header set — order matters for Cloudflare fingerprinting
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	// Do NOT set Accept-Encoding manually — Go's transport adds it and handles
+	// decompression automatically. Manual setting disables auto-decompression.
+	req.Header.Set("Connection", "keep-alive")
 	req.Header.Set("Referer", "https://gmgn.ai/sol/wallets")
 	req.Header.Set("Origin", "https://gmgn.ai")
+	req.Header.Set("sec-ch-ua", `"Not(A:Brand";v="99", "Google Chrome";v="122", "Chromium";v="122"`)
+	req.Header.Set("sec-ch-ua-mobile", "?0")
+	req.Header.Set("sec-ch-ua-platform", `"Windows"`)
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.Header.Set("Sec-Fetch-Mode", "cors")
+	req.Header.Set("Sec-Fetch-Dest", "empty")
 	return req, nil
+}
+
+func (g *GMGNClient) doRequest(req *http.Request) ([]byte, int, error) {
+	resp, err := g.http.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return body, resp.StatusCode, nil
 }
 
 // TopWalletsPaged fetches multiple pages to get up to `total` wallets for a period.
@@ -135,16 +167,12 @@ func (g *GMGNClient) TopWalletsPaged(ctx context.Context, period string, orderby
 			return all, err
 		}
 
-		resp, err := g.http.Do(req)
+		body, status, err := g.doRequest(req)
 		if err != nil {
 			return all, fmt.Errorf("gmgn page %d failed: %w", offset/pageSize+1, err)
 		}
-
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-
-		if resp.StatusCode != 200 {
-			return all, fmt.Errorf("gmgn HTTP %d at offset %d", resp.StatusCode, offset)
+		if status != 200 {
+			return all, fmt.Errorf("gmgn HTTP %d at offset %d", status, offset)
 		}
 
 		var result gmgnRankResponse
@@ -167,7 +195,7 @@ func (g *GMGNClient) TopWalletsPaged(ctx context.Context, period string, orderby
 			break
 		}
 
-		time.Sleep(600 * time.Millisecond)
+		time.Sleep(800 * time.Millisecond)
 	}
 
 	return all, nil
@@ -185,18 +213,16 @@ func (g *GMGNClient) SmartMoneyWallets(ctx context.Context, period string, limit
 		return nil, err
 	}
 
-	resp, err := g.http.Do(req)
+	body, status, err := g.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("gmgn smart money request failed: %w", err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("gmgn smart money HTTP %d", resp.StatusCode)
+	if status != 200 {
+		return nil, fmt.Errorf("gmgn smart money HTTP %d", status)
 	}
 
 	var result gmgnRankResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("gmgn smart money decode error: %w", err)
 	}
 
