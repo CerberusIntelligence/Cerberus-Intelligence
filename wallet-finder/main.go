@@ -13,6 +13,7 @@ import (
 	"wallet-finder/api"
 	"wallet-finder/botmode"
 	"wallet-finder/config"
+	"wallet-finder/discovery"
 	"wallet-finder/models"
 	"wallet-finder/output"
 	"wallet-finder/scorer"
@@ -27,6 +28,8 @@ func main() {
 	exportBot := flag.Bool("export-bot", false, "Export top wallets to bot's tracked_wallets.json")
 	botMode := flag.Bool("bot", false, "Run as Telegram bot — listen for commands")
 	noFilter := flag.Bool("no-filter", false, "Skip all filters and save every analyzed wallet")
+	huntMode := flag.Bool("hunt", false, "Use token-hunter mode: find smart money from pumped tokens via DexScreener")
+	gmgnMode := flag.Bool("gmgn", false, "Use GMGN.ai leaderboard scraper to find high-quality wallets")
 	flag.Parse()
 
 	cfg := config.Load()
@@ -77,6 +80,304 @@ func main() {
 			os.Exit(1)
 		}
 		botmode.Listen(cfg, tg)
+		return
+	}
+
+	// Hunt mode: discover wallets from pumped tokens instead of leaderboards
+	if *huntMode {
+		fmt.Println("╔══════════════════════════════════════════════════╗")
+		fmt.Println("║     SMART MONEY HUNTER  (DexScreener mode)       ║")
+		fmt.Println("╚══════════════════════════════════════════════════╝")
+		dex := api.NewDexscreener()
+		fmt.Println("[1/3] Finding pumped Solana tokens from DexScreener...")
+		tokens, err := dex.FindPumpedTokens(ctx, 50.0, 10000.0)
+		if err != nil || len(tokens) == 0 {
+			fmt.Printf("[!] DexScreener failed or no pumped tokens found: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("    Found %d pumped tokens\n\n", len(tokens))
+
+		fmt.Println("[2/3] Scanning liquidity pools for early profitable buyers...")
+		candidates := discovery.FindSmartMoney(ctx, helius, tokens, 200)
+
+		if len(candidates) == 0 {
+			fmt.Println("[!] No smart money wallets found across pumped tokens.")
+			os.Exit(0)
+		}
+
+		fmt.Printf("\n[3/3] Deep analysis of %d smart money candidates...\n", len(candidates))
+		var analyses []*models.WalletAnalysis
+		passed, skipped := 0, 0
+		for i, addr := range candidates {
+			select {
+			case <-ctx.Done():
+				goto huntScore
+			default:
+			}
+			fmt.Printf("    [%d/%d] %s", i+1, len(candidates), addr[:8]+"...")
+			txs, err := helius.GetSwapTransactions(ctx, addr, cfg.HeliusTxLimit)
+			if err != nil {
+				fmt.Printf("  [err: %v]\n", err)
+				skipped++
+				continue
+			}
+			wa := analyzer.AnalyzeHistory(addr, txs, api.BirdeyeCandidate{Address: addr})
+			fmt.Printf("  wr=%.1f%%  wins=%d  wdays=%d  pnl=%.2f◎\n",
+				wa.BirdeyeWinRate*100, wa.WinCount, wa.WinDays, wa.TotalPnLSOL)
+			if wa.BirdeyeWinRate < cfg.MinWinRate || wa.WinCount < cfg.MinWinCount || wa.TotalPnLSOL < cfg.MinHeliusPnLSOL {
+				skipped++
+				continue
+			}
+			wa.Score = scorer.Score(wa)
+			analyses = append(analyses, wa)
+			passed++
+			time.Sleep(200 * time.Millisecond)
+		}
+	huntScore:
+		fmt.Printf("\n[✓] %d passed  |  %d skipped\n", passed, skipped)
+		if len(analyses) == 0 {
+			fmt.Println("[!] No wallets survived filters.")
+			os.Exit(0)
+		}
+		ranked := scorer.Rank(analyses, cfg.TopN)
+		output.PrintTable(ranked)
+		output.PrintSummary(ranked)
+		if err := output.SaveJSON(ranked, cfg.OutputFile); err != nil {
+			fmt.Fprintf(os.Stderr, "[!] Could not save: %v\n", err)
+		}
+		if tg != nil {
+			date := time.Now().Format("2006-01-02")
+			_ = tg.SendChunked(output.FormatTelegram(ranked, date))
+		}
+		return
+	}
+
+	// GMGN mode: scrape GMGN.ai leaderboard for high-quality wallets with real history
+	if *gmgnMode {
+		fmt.Println("╔══════════════════════════════════════════════════╗")
+		fmt.Println("║     GMGN.ai SMART WALLET SCRAPER                 ║")
+		fmt.Println("╚══════════════════════════════════════════════════╝")
+		gmgn := api.NewGMGN()
+
+		seen := make(map[string]bool)
+		var gmgnCandidates []api.GMGNWallet
+
+		cancelled := false
+		for _, period := range api.GMGNPeriods {
+			if cancelled {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				cancelled = true
+				continue
+			default:
+			}
+			fmt.Printf("[→] Fetching GMGN %s leaderboard (top 500 by PnL)...\n", period)
+			wallets, err := gmgn.TopWalletsPaged(ctx, period, "pnl", 500)
+			if err != nil {
+				fmt.Printf("    [!] %s failed: %v\n", period, err)
+				continue
+			}
+			fmt.Printf("    Got %d wallets from %s\n", len(wallets), period)
+			added := 0
+			for _, w := range wallets {
+				if w.Address == "" || seen[w.Address] {
+					continue
+				}
+				seen[w.Address] = true
+				gmgnCandidates = append(gmgnCandidates, w)
+				added++
+			}
+			fmt.Printf("    %d new unique wallets added\n", added)
+			time.Sleep(1 * time.Second)
+		}
+
+		// Also fetch smart money tagged wallets
+		if !cancelled {
+			fmt.Println("[→] Fetching GMGN smart_degen tagged wallets...")
+			smartWallets, err := gmgn.SmartMoneyWallets(ctx, "30d", 100)
+			if err != nil {
+				fmt.Printf("    [!] Smart money fetch failed: %v\n", err)
+			} else {
+				added := 0
+				for _, w := range smartWallets {
+					if w.Address == "" || seen[w.Address] {
+						continue
+					}
+					seen[w.Address] = true
+					gmgnCandidates = append(gmgnCandidates, w)
+					added++
+				}
+				fmt.Printf("    %d additional smart_degen wallets\n", added)
+			}
+		}
+
+		fmt.Printf("\n[1/2] Pre-filtering %d GMGN candidates...\n", len(gmgnCandidates))
+
+		// Pre-filter by GMGN's own data before burning Helius API calls
+		var gmgnFiltered []api.GMGNWallet
+		now := time.Now().Unix()
+		for _, w := range gmgnCandidates {
+			// Must have positive 30d realized profit above threshold
+			pnl30d := w.RealizedProfit30d
+			if pnl30d <= 0 {
+				pnl30d = w.RealizedProfit7d
+			}
+			if pnl30d < cfg.MinPeriodPnLUSD {
+				continue
+			}
+			// Win rate pre-screen from GMGN data — use 50% floor so we don't
+			// discard wallets before Helius computes the real win rate.
+			wr := w.Winrate30d
+			if wr == 0 {
+				wr = w.Winrate7d
+			}
+			if wr < 0.50 {
+				continue
+			}
+			// Must have been active recently
+			if cfg.MaxActiveAgoDays > 0 && w.LastActiveTime > 0 {
+				daysSince := int((now - w.LastActiveTime) / 86400)
+				if daysSince > cfg.MaxActiveAgoDays*3 { // 3x grace for GMGN timestamps
+					continue
+				}
+			}
+			// Must have enough trades
+			trades := w.Buy30d + w.Sell30d
+			if trades == 0 {
+				trades = w.Buy + w.Sell
+			}
+			if trades < cfg.MinTrades {
+				continue
+			}
+			gmgnFiltered = append(gmgnFiltered, w)
+		}
+		fmt.Printf("    After pre-filter: %d candidates\n\n", len(gmgnFiltered))
+
+		if len(gmgnFiltered) == 0 {
+			fmt.Println("[!] No candidates passed GMGN pre-filter. Try lowering thresholds.")
+			if len(gmgnCandidates) > 0 {
+				fmt.Printf("    Top GMGN wallet: %s  30dPnL=$%.0f  wr=%.1f%%\n",
+					gmgnCandidates[0].Address, gmgnCandidates[0].RealizedProfit30d, gmgnCandidates[0].Winrate30d*100)
+			}
+			os.Exit(0)
+		}
+
+		fmt.Printf("[2/2] Deep Helius analysis of %d candidates...\n", len(gmgnFiltered))
+		var analyses []*models.WalletAnalysis
+		passed, skipped := 0, 0
+
+		for i, gw := range gmgnFiltered {
+			select {
+			case <-ctx.Done():
+				fmt.Println("\n[!] Scan cancelled — saving partial results.")
+				goto gmgnScore
+			default:
+			}
+
+			fmt.Printf("    [%d/%d] %s  30dPnL=$%.0f  wr=%.1f%%",
+				i+1, len(gmgnFiltered), gw.Address[:8]+"...",
+				gw.RealizedProfit30d, gw.Winrate30d*100)
+
+			txs, err := helius.GetSwapTransactions(ctx, gw.Address, cfg.HeliusTxLimit)
+			if err != nil {
+				fmt.Printf("  [helius err: %v]\n", err)
+				skipped++
+				time.Sleep(500 * time.Millisecond)
+				continue
+			}
+
+			// Build a BirdeyeCandidate from GMGN data so analyzer works
+			bc := api.BirdeyeCandidate{
+				Address:    gw.Address,
+				PnL:        gw.RealizedProfit30d,
+				TradeCount: gw.Buy30d + gw.Sell30d,
+			}
+			if bc.PnL == 0 {
+				bc.PnL = gw.RealizedProfit7d
+			}
+			if bc.TradeCount == 0 {
+				bc.TradeCount = gw.Buy + gw.Sell
+			}
+
+			wa := analyzer.AnalyzeHistory(gw.Address, txs, bc)
+			fmt.Printf("  swaps=%d  wr=%.1f%%  wins=%d  wdays=%d  pnl=%.2f◎",
+				wa.SwapCount, wa.BirdeyeWinRate*100, wa.WinCount, wa.WinDays, wa.TotalPnLSOL)
+
+			if !*noFilter {
+				if bc.PnL < cfg.MinPeriodPnLUSD {
+					fmt.Printf("  [skip: pnl $%.0f < $%.0f]\n", bc.PnL, cfg.MinPeriodPnLUSD)
+					skipped++
+					continue
+				}
+				if wa.TotalPnLSOL < cfg.MinHeliusPnLSOL {
+					fmt.Printf("  [skip: helius pnl %.1f◎ < %.1f◎]\n", wa.TotalPnLSOL, cfg.MinHeliusPnLSOL)
+					skipped++
+					continue
+				}
+				if wa.BirdeyeWinRate < cfg.MinWinRate {
+					fmt.Printf("  [skip: wr %.1f%% < %.0f%%]\n", wa.BirdeyeWinRate*100, cfg.MinWinRate*100)
+					skipped++
+					continue
+				}
+				if wa.WinCount < cfg.MinWinCount {
+					fmt.Printf("  [skip: only %d wins]\n", wa.WinCount)
+					skipped++
+					continue
+				}
+				if wa.WinDays < cfg.MinWinDays {
+					fmt.Printf("  [skip: wins on only %d day(s)]\n", wa.WinDays)
+					skipped++
+					continue
+				}
+				if cfg.MaxTopWinPct > 0 && wa.TopWinPct > cfg.MaxTopWinPct {
+					fmt.Printf("  [skip: scraper — top win = %.0f%%]\n", wa.TopWinPct*100)
+					skipped++
+					continue
+				}
+				if wa.HistoryDays < cfg.MinHistoryDays {
+					fmt.Printf("  [skip: hist %dd < %dd]\n", wa.HistoryDays, cfg.MinHistoryDays)
+					skipped++
+					continue
+				}
+				if cfg.MaxActiveAgoDays > 0 && wa.DaysSinceActive > cfg.MaxActiveAgoDays {
+					fmt.Printf("  [skip: idle %dd > %dd]\n", wa.DaysSinceActive, cfg.MaxActiveAgoDays)
+					skipped++
+					continue
+				}
+			}
+
+			wa.Score = scorer.Score(wa)
+			analyses = append(analyses, wa)
+			passed++
+			fmt.Printf("  → score=%.2f ✓\n", wa.Score)
+			time.Sleep(200 * time.Millisecond)
+		}
+
+	gmgnScore:
+		fmt.Printf("\n[✓] %d passed  |  %d skipped\n", passed, skipped)
+		if len(analyses) == 0 {
+			fmt.Println("[!] No wallets survived all filters.")
+			fmt.Println("    Try lowering MIN_WIN_RATE or MIN_PERIOD_PNL_USD in .env")
+			os.Exit(0)
+		}
+		ranked := scorer.Rank(analyses, cfg.TopN)
+		output.PrintTable(ranked)
+		output.PrintSummary(ranked)
+		if err := output.SaveJSON(ranked, cfg.OutputFile); err != nil {
+			fmt.Fprintf(os.Stderr, "[!] Could not save: %v\n", err)
+		}
+		if tg != nil {
+			date := time.Now().Format("2006-01-02")
+			_ = tg.SendChunked(output.FormatTelegram(ranked, date))
+		}
+		if cfg.ExportForBot {
+			top20 := scorer.RankByPnL(analyses, 20)
+			if err := output.ExportForBot(top20, cfg.BotWalletsFile); err != nil {
+				fmt.Fprintf(os.Stderr, "[!] Could not export to bot file: %v\n", err)
+			}
+		}
 		return
 	}
 
@@ -199,6 +500,16 @@ prefilter:
 
 		// Apply filters using real Helius-computed data
 		if !*noFilter {
+			if c.PnL < cfg.MinPeriodPnLUSD {
+				fmt.Printf("  [skip: period pnl $%.0f < $%.0f required]\n", c.PnL, cfg.MinPeriodPnLUSD)
+				skipped++
+				continue
+			}
+			if wa.TotalPnLSOL < cfg.MinHeliusPnLSOL {
+				fmt.Printf("  [skip: helius pnl %.1f◎ < %.1f◎ required]\n", wa.TotalPnLSOL, cfg.MinHeliusPnLSOL)
+				skipped++
+				continue
+			}
 			if wa.BirdeyeWinRate < cfg.MinWinRate {
 				fmt.Printf("  [skip: wr %.1f%% < %.0f%%]\n", wa.BirdeyeWinRate*100, cfg.MinWinRate*100)
 				skipped++

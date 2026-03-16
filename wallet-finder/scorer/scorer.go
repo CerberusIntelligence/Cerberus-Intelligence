@@ -8,11 +8,11 @@ import (
 )
 
 const (
-	weightWinRate     = 0.25 // raw win rate (less weight — high wr alone can be luck)
-	weightConsistency = 0.30 // stable win rate across months (key long-term signal)
-	weightSpread      = 0.25 // wins spread across many weeks/days (scalping/consistency)
-	weightHistory     = 0.12 // depth of trading history
-	weightRecency     = 0.08 // recently active
+	weightWinRate     = 0.20 // raw win rate
+	weightConsistency = 0.25 // stable win rate across months
+	weightSpread      = 0.35 // wins spread across many weeks/days — most important
+	weightHistory     = 0.15 // depth of trading history
+	weightRecency     = 0.05 // recently active
 )
 
 // Score computes a composite 0–100 score.
@@ -30,13 +30,13 @@ func Score(wa *models.WalletAnalysis) float64 {
 	// Full score at 4+ distinct weeks with wins — proves it's not a fluke.
 	spreadScore := 0.0
 	if wa.WinCount > 0 {
-		// Week spread: most important — shows multi-week consistency
-		weekScore := math.Min(1.0, float64(wa.WinWeeks)/4.0)
-		// Day spread: secondary signal
-		dayScore := math.Min(1.0, float64(wa.WinDays)/10.0)
-		// Win count: rewards scalpers with many small wins
-		countScore := math.Min(1.0, float64(wa.WinCount)/20.0)
-		spreadScore = weekScore*0.5 + dayScore*0.3 + countScore*0.2
+		// Week spread: full score at 3+ weeks — proves multi-week consistency
+		weekScore := math.Min(1.0, float64(wa.WinWeeks)/3.0)
+		// Day spread: full score at 14+ winning days — proves sustained trading
+		dayScore := math.Min(1.0, float64(wa.WinDays)/14.0)
+		// Win count: full score at 30+ wins — volume of consistent winners
+		countScore := math.Min(1.0, float64(wa.WinCount)/30.0)
+		spreadScore = weekScore*0.5 + dayScore*0.35 + countScore*0.15
 	}
 
 	composite := winRateNorm*weightWinRate +

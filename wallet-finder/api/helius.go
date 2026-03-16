@@ -23,11 +23,12 @@ func NewHelius(apiKey string) *HeliusClient {
 
 // HeliusTx is the minimal enhanced transaction shape we care about.
 type HeliusTx struct {
-	Signature      string           `json:"signature"`
-	Timestamp      int64            `json:"timestamp"`
-	Type           string           `json:"type"`
-	TokenTransfers []TokenTransfer  `json:"tokenTransfers"`
-	AccountData    []AccountData    `json:"accountData"`
+	Signature      string          `json:"signature"`
+	Timestamp      int64           `json:"timestamp"`
+	Type           string          `json:"type"`
+	FeePayer       string          `json:"feePayer"`
+	TokenTransfers []TokenTransfer `json:"tokenTransfers"`
+	AccountData    []AccountData   `json:"accountData"`
 }
 
 // TokenTransfer represents a token movement in a transaction.
@@ -90,6 +91,59 @@ func (h *HeliusClient) GetSwapTransactions(ctx context.Context, address string, 
 		}
 	}
 
+	return all, nil
+}
+
+// GetPoolTransactions fetches transactions for a liquidity pool address (any type).
+func (h *HeliusClient) GetPoolTransactions(ctx context.Context, poolAddress string, limit int) ([]HeliusTx, error) {
+	if h.apiKey == "" {
+		return nil, fmt.Errorf("HELIUS_API_KEY not set")
+	}
+	var all []HeliusTx
+	before := ""
+	batchSize := 100
+	if batchSize > limit {
+		batchSize = limit
+	}
+	for len(all) < limit {
+		url := fmt.Sprintf(
+			"https://api.helius.xyz/v0/addresses/%s/transactions?api-key=%s&limit=%d",
+			poolAddress, h.apiKey, batchSize,
+		)
+		if before != "" {
+			url += "&before=" + before
+		}
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return all, err
+		}
+		resp, err := h.http.Do(req)
+		if err != nil {
+			return all, err
+		}
+		body, _ := json.RawMessage{}, error(nil)
+		var raw json.RawMessage
+		_ = json.NewDecoder(resp.Body).Decode(&raw)
+		resp.Body.Close()
+		if resp.StatusCode != 200 || len(raw) == 0 || raw[0] != '[' {
+			break
+		}
+		var batch []HeliusTx
+		if err := json.Unmarshal(raw, &batch); err != nil || len(batch) == 0 {
+			break
+		}
+		all = append(all, batch...)
+		before = batch[len(batch)-1].Signature
+		if len(batch) < batchSize {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return all, ctx.Err()
+		case <-time.After(150 * time.Millisecond):
+		}
+		_ = body
+	}
 	return all, nil
 }
 

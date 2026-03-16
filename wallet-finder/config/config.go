@@ -25,6 +25,8 @@ type Config struct {
 	MinHistoryDays   int     // wallet must have been trading at least this long
 	MaxActiveAgoDays int     // must have traded within this many days (recency gate)
 	MinProfitFactor  float64 // total_wins / abs(total_losses) — must exceed 1.0
+	MinPeriodPnLUSD  float64 // minimum Birdeye period PnL in USD (filters low/negative all-time wallets)
+	MinHeliusPnLSOL  float64 // minimum SOL profit from Helius-analyzed trades (must be positive)
 
 	// Discovery
 	DiscoveryBatchSize int // how many candidates to pull from each leaderboard period
@@ -50,6 +52,8 @@ func Load() *Config {
 	minHistoryDays, _ := strconv.Atoi(getEnv("MIN_HISTORY_DAYS", "0"))
 	maxActiveAgoDays, _ := strconv.Atoi(getEnv("MAX_ACTIVE_AGO_DAYS", "3"))
 	minProfitFactor, _ := strconv.ParseFloat(getEnv("MIN_PROFIT_FACTOR", "1.2"), 64)
+	minPeriodPnLUSD, _ := strconv.ParseFloat(getEnv("MIN_PERIOD_PNL_USD", "50000"), 64)
+	minHeliusPnLSOL, _ := strconv.ParseFloat(getEnv("MIN_HELIUS_PNL_SOL", "5"), 64)
 	discoveryBatch, _ := strconv.Atoi(getEnv("DISCOVERY_BATCH", "200"))
 	heliusTxLimit, _ := strconv.Atoi(getEnv("HELIUS_TX_LIMIT", "500"))
 	topN, _ := strconv.Atoi(getEnv("TOP_N", "20"))
@@ -67,6 +71,8 @@ func Load() *Config {
 		MinHistoryDays:     minHistoryDays,
 		MaxActiveAgoDays:   maxActiveAgoDays,
 		MinProfitFactor:    minProfitFactor,
+		MinPeriodPnLUSD:    minPeriodPnLUSD,
+		MinHeliusPnLSOL:    minHeliusPnLSOL,
 		DiscoveryBatchSize: discoveryBatch,
 		HeliusTxLimit:      heliusTxLimit,
 		TopN:               topN,

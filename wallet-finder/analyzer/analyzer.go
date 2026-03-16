@@ -181,9 +181,9 @@ func AnalyzeHistory(address string, txs []api.HeliusTx, candidate api.BirdeyeCan
 	}
 
 	wa.ConsistencyScore = consistencyScore(winRates)
-	// HistoryScore: cap at 90 days (3 months) = 1.0.
-	// Wallets with more history are clearly rewarded but 3 months is "full" score.
-	wa.HistoryScore = math.Min(1.0, float64(wa.HistoryDays)/90.0)
+	// HistoryScore: cap at 30 days (1 month) = 1.0.
+	// We're now requiring 14+ days minimum so this scale makes sense.
+	wa.HistoryScore = math.Min(1.0, float64(wa.HistoryDays)/30.0)
 	wa.RecencyScore = math.Max(0.0, 1.0-float64(wa.DaysSinceActive)/30.0)
 
 	return wa
