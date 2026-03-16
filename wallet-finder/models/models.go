@@ -27,6 +27,8 @@ type WalletAnalysis struct {
 	AvgWinSOL       float64 // average SOL profit per winning trade
 	AvgLossSOL      float64 // average SOL loss per losing trade (absolute value)
 	TopWinPct       float64 // % of total PnL from the single biggest win (scraper signal)
+	AvgReturnPct    float64 // average ROI % across ALL closed positions (e.g. 150 = 150% return)
+	AvgWinReturnPct float64 // average ROI % on winning trades only
 
 	// From Helius (transaction history)
 	HistoryDays      int     // days between first and last observed trade
@@ -58,6 +60,8 @@ type RankedWallet struct {
 	AvgWinSOL        float64        `json:"avg_win_sol"`
 	AvgLossSOL       float64        `json:"avg_loss_sol"`
 	TopWinPct        float64        `json:"top_win_pct"`
+	AvgReturnPct     float64        `json:"avg_return_pct"`
+	AvgWinReturnPct  float64        `json:"avg_win_return_pct"`
 	AvgHoldSeconds   float64        `json:"avg_hold_seconds"`
 	PeriodCount      int            `json:"period_count"`
 	ConsistencyScore float64        `json:"consistency_score"`

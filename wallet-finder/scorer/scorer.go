@@ -8,63 +8,55 @@ import (
 )
 
 const (
-	weightWinRate     = 0.20 // raw win rate
-	weightConsistency = 0.25 // stable win rate across months
-	weightSpread      = 0.35 // wins spread across many weeks/days — most important
-	weightHistory     = 0.15 // depth of trading history
-	weightRecency     = 0.05 // recently active
+	weightReturn      = 0.40 // avg ROI % per trade — primary signal
+	weightSpread      = 0.30 // wins spread across days/weeks — consistency
+	weightHold        = 0.15 // avg hold time — filters bots/snipers
+	weightRecency     = 0.10 // recently active
+	weightHistory     = 0.05 // depth of trading history
 )
 
 // Score computes a composite 0–100 score.
-// Prioritises consistent, long-history traders over one-hit wonders.
-// Rewards both scalpers (many small wins per week) and swing traders
-// (high % gain per trade) as long as wins are spread across multiple weeks.
+// Prioritises high return % per trade and consistency over raw win rate.
 func Score(wa *models.WalletAnalysis) float64 {
 	if wa == nil {
 		return 0
 	}
 
-	winRateNorm := normaliseWinRate(wa.BirdeyeWinRate)
+	// Return score: avg win return %. Full score at 200%+ avg return per win.
+	// A 200% return means tripling money on average — that's exceptional.
+	returnScore := 0.0
+	if wa.AvgWinReturnPct > 0 {
+		returnScore = math.Min(1.0, wa.AvgWinReturnPct/200.0)
+	}
 
-	// Win spread: weeks are the primary signal (any active trader can win in 1 day).
-	// Full score at 4+ distinct weeks with wins — proves it's not a fluke.
+	// Spread: wins across multiple days and weeks proves it's not a fluke
 	spreadScore := 0.0
 	if wa.WinCount > 0 {
-		// Week spread: full score at 3+ weeks — proves multi-week consistency
 		weekScore := math.Min(1.0, float64(wa.WinWeeks)/3.0)
-		// Day spread: full score at 14+ winning days — proves sustained trading
-		dayScore := math.Min(1.0, float64(wa.WinDays)/14.0)
-		// Win count: full score at 30+ wins — volume of consistent winners
-		countScore := math.Min(1.0, float64(wa.WinCount)/30.0)
+		dayScore := math.Min(1.0, float64(wa.WinDays)/7.0)
+		countScore := math.Min(1.0, float64(wa.WinCount)/20.0)
 		spreadScore = weekScore*0.5 + dayScore*0.35 + countScore*0.15
 	}
 
-	composite := winRateNorm*weightWinRate +
-		wa.ConsistencyScore*weightConsistency +
-		spreadScore*weightSpread +
-		wa.HistoryScore*weightHistory +
-		wa.RecencyScore*weightRecency
-
-	// Scraper penalty: if the single biggest win is >50% of total PnL,
-	// this is likely a one-hit wonder / lucky sniper — penalise hard.
-	if wa.TopWinPct > 0.50 {
-		penalty := (wa.TopWinPct - 0.50) / 0.50 // 0 at 50%, 1.0 at 100%
-		composite *= (1.0 - penalty*0.60)         // up to -60% penalty
+	// Hold score: full score at 60+ min avg hold. Bots hold seconds, humans hold minutes/hours.
+	holdScore := 0.0
+	if wa.AvgHoldSeconds > 0 {
+		holdScore = math.Min(1.0, wa.AvgHoldSeconds/3600.0) // full at 1h
 	}
 
-	// Multi-period bonus
-	periodBonus := map[int]float64{1: 0, 2: 0.03, 3: 0.06, 4: 0.10}
-	bonus := periodBonus[wa.PeriodCount]
-	composite = math.Min(1.0, composite*(1+bonus))
+	composite := returnScore*weightReturn +
+		spreadScore*weightSpread +
+		holdScore*weightHold +
+		wa.RecencyScore*weightRecency +
+		wa.HistoryScore*weightHistory
+
+	// Scraper penalty: one trade dominating total PnL = lucky fluke not skill
+	if wa.TopWinPct > 0.50 {
+		penalty := (wa.TopWinPct - 0.50) / 0.50
+		composite *= (1.0 - penalty*0.50)
+	}
 
 	return math.Round(composite*10000) / 100
-}
-
-func normaliseWinRate(wr float64) float64 {
-	if wr <= 0.5 {
-		return 0
-	}
-	return math.Sqrt((wr - 0.5) / 0.5)
 }
 
 func Rank(analyses []*models.WalletAnalysis, topN int) []models.RankedWallet {
@@ -103,6 +95,8 @@ func rankBy(analyses []*models.WalletAnalysis, topN int, less func(a, b *models.
 			AvgWinSOL:        math.Round(wa.AvgWinSOL*1000) / 1000,
 			AvgLossSOL:       math.Round(wa.AvgLossSOL*1000) / 1000,
 			TopWinPct:        math.Round(wa.TopWinPct*1000) / 10,
+			AvgReturnPct:     math.Round(wa.AvgReturnPct*10) / 10,
+			AvgWinReturnPct:  math.Round(wa.AvgWinReturnPct*10) / 10,
 			PeriodCount:      wa.PeriodCount,
 			ConsistencyScore: math.Round(wa.ConsistencyScore*100) / 100,
 			HistoryDays:      wa.HistoryDays,

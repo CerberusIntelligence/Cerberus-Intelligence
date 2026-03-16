@@ -91,6 +91,8 @@ func AnalyzeHistory(address string, txs []api.HeliusTx, candidate api.BirdeyeCan
 	var winAmounts []float64
 	var lossAmounts []float64
 	var holdTimes []float64
+	var allReturns []float64
+	var winReturns []float64
 	totalPnL := 0.0
 	biggestWin := 0.0
 
@@ -114,6 +116,13 @@ func AnalyzeHistory(address string, txs []api.HeliusTx, candidate api.BirdeyeCan
 
 		totalPnL += pnl
 
+		// ROI % for this position: (profit / cost) * 100
+		returnPct := 0.0
+		if f.solIn > 0 {
+			returnPct = (pnl / f.solIn) * 100
+		}
+		allReturns = append(allReturns, returnPct)
+
 		month := f.day[:7] // YYYY-MM
 		if months[month] == nil {
 			months[month] = &monthBucket{}
@@ -122,6 +131,7 @@ func AnalyzeHistory(address string, txs []api.HeliusTx, candidate api.BirdeyeCan
 		if pnl >= 0 {
 			wa.WinCount++
 			winAmounts = append(winAmounts, pnl)
+			winReturns = append(winReturns, returnPct)
 			if holdSecs > 0 {
 				holdTimes = append(holdTimes, float64(holdSecs))
 			}
@@ -150,6 +160,20 @@ func AnalyzeHistory(address string, txs []api.HeliusTx, candidate api.BirdeyeCan
 			sum += h
 		}
 		wa.AvgHoldSeconds = sum / float64(len(holdTimes))
+	}
+	if len(allReturns) > 0 {
+		sum := 0.0
+		for _, r := range allReturns {
+			sum += r
+		}
+		wa.AvgReturnPct = sum / float64(len(allReturns))
+	}
+	if len(winReturns) > 0 {
+		sum := 0.0
+		for _, r := range winReturns {
+			sum += r
+		}
+		wa.AvgWinReturnPct = sum / float64(len(winReturns))
 	}
 
 	total := wa.WinCount + wa.LossCount
