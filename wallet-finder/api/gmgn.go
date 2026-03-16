@@ -139,24 +139,23 @@ func (g *GMGNClient) doRequest(req *http.Request) ([]byte, int, error) {
 	return body, resp.StatusCode, nil
 }
 
-// TopWalletsPaged fetches multiple pages to get up to `total` wallets for a period.
+// TopWalletsPaged fetches up to maxPages pages of wallets for a period.
 // period: "7d" or "30d", orderby: "pnl" or "winrate"
 func (g *GMGNClient) TopWalletsPaged(ctx context.Context, period string, orderby string, total int) ([]GMGNWallet, error) {
-	pageSize := 100
-	if total < pageSize {
-		pageSize = total
-	}
+	const pageSize = 100
+	const maxPages = 5 // GMGN cycles duplicates after ~5 pages
 
 	seen := make(map[string]bool)
 	var all []GMGNWallet
 
-	for offset := 0; len(all) < total; offset += pageSize {
+	for page := 0; page < maxPages; page++ {
 		select {
 		case <-ctx.Done():
 			return all, nil
 		default:
 		}
 
+		offset := page * pageSize
 		url := fmt.Sprintf(
 			"%s/defi/quotation/v1/rank/sol/wallets/%s?orderby=%s&direction=desc&limit=%d&offset=%d",
 			gmgnBase, period, orderby, pageSize, offset,
@@ -167,11 +166,14 @@ func (g *GMGNClient) TopWalletsPaged(ctx context.Context, period string, orderby
 			return all, err
 		}
 
+		fmt.Printf("    page %d...", page+1)
 		body, status, err := g.doRequest(req)
 		if err != nil {
-			return all, fmt.Errorf("gmgn page %d failed: %w", offset/pageSize+1, err)
+			fmt.Println(" err")
+			return all, fmt.Errorf("gmgn page %d failed: %w", page+1, err)
 		}
 		if status != 200 {
+			fmt.Println(" blocked")
 			return all, fmt.Errorf("gmgn HTTP %d at offset %d", status, offset)
 		}
 
@@ -181,16 +183,24 @@ func (g *GMGNClient) TopWalletsPaged(ctx context.Context, period string, orderby
 		}
 
 		if len(result.Data.Rank) == 0 {
+			fmt.Println(" done")
 			break
 		}
 
+		added := 0
 		for _, raw := range result.Data.Rank {
 			if raw.Address != "" && !seen[raw.Address] {
 				seen[raw.Address] = true
 				all = append(all, convertRaw(raw))
+				added++
 			}
 		}
+		fmt.Printf(" %d new (%d total)\n", added, len(all))
 
+		// Stop if GMGN is cycling duplicates
+		if added == 0 {
+			break
+		}
 		if len(result.Data.Rank) < pageSize {
 			break
 		}
