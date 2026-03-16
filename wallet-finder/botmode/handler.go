@@ -27,8 +27,24 @@ const helpText = `*SOL Wallet Finder — Commands*
 
 // Listen starts the Telegram polling loop and handles commands.
 func Listen(cfg *config.Config, tg *telegram.Client) {
-	fmt.Println("[BOT] Polling Telegram for commands... (Ctrl+C to stop)")
-	_ = tg.SetMyCommands()
+	fmt.Println("[BOT] Starting...")
+	fmt.Printf("[BOT] Token set: %v\n", cfg.TelegramToken != "")
+	fmt.Printf("[BOT] ChatID set: %v\n", cfg.TelegramChatID != "")
+
+	if err := tg.SetMyCommands(); err != nil {
+		fmt.Printf("[BOT] SetMyCommands error: %v\n", err)
+	} else {
+		fmt.Println("[BOT] Commands registered OK")
+	}
+
+	// Notify user the bot is online
+	if err := tg.Send("🟢 SOL Wallet Finder bot is online\\! Send /help for commands\\."); err != nil {
+		fmt.Printf("[BOT] Failed to send startup message: %v\n", err)
+	} else {
+		fmt.Println("[BOT] Startup message sent to Telegram")
+	}
+
+	fmt.Println("[BOT] Polling for commands... (Ctrl+C to stop)")
 
 	offset := 0
 	for {
@@ -46,7 +62,7 @@ func Listen(cfg *config.Config, tg *telegram.Client) {
 			if text == "" {
 				continue
 			}
-			fmt.Printf("[BOT] received: %s\n", text)
+			fmt.Printf("[BOT] received from %d: %s\n", chatID, text)
 			handle(cfg, tg, chatID, text)
 		}
 	}

@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
+	"time"
 	"strconv"
 )
 
@@ -25,7 +27,9 @@ type Chat struct {
 // GetUpdates long-polls Telegram for new messages since offset.
 func (c *Client) GetUpdates(offset int) ([]Update, error) {
 	u := fmt.Sprintf("%s%s/getUpdates?timeout=30&offset=%d", apiBase, c.token, offset)
-	resp, err := c.http.Get(u)
+	// Use a dedicated client with a longer timeout than the poll window
+	pollClient := &http.Client{Timeout: 40 * time.Second}
+	resp, err := pollClient.Get(u)
 	if err != nil {
 		return nil, err
 	}

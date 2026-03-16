@@ -26,6 +26,7 @@ func main() {
 	topN := flag.Int("top", 0, "Override TOP_N (e.g. 100)")
 	exportBot := flag.Bool("export-bot", false, "Export top wallets to bot's tracked_wallets.json")
 	botMode := flag.Bool("bot", false, "Run as Telegram bot — listen for commands")
+	noFilter := flag.Bool("no-filter", false, "Skip all filters and save every analyzed wallet")
 	flag.Parse()
 
 	cfg := config.Load()
@@ -197,35 +198,37 @@ prefilter:
 			wa.WinWeeks, wa.TopWinPct*100, wa.DaysSinceActive)
 
 		// Apply filters using real Helius-computed data
-		if wa.BirdeyeWinRate < cfg.MinWinRate {
-			fmt.Printf("  [skip: wr %.1f%% < %.0f%%]\n", wa.BirdeyeWinRate*100, cfg.MinWinRate*100)
-			skipped++
-			continue
-		}
-		if wa.WinCount < cfg.MinWinCount {
-			fmt.Printf("  [skip: only %d wins < %d required]\n", wa.WinCount, cfg.MinWinCount)
-			skipped++
-			continue
-		}
-		if wa.WinDays < cfg.MinWinDays {
-			fmt.Printf("  [skip: wins on only %d day(s) < %d required]\n", wa.WinDays, cfg.MinWinDays)
-			skipped++
-			continue
-		}
-		if cfg.MaxTopWinPct > 0 && wa.TopWinPct > cfg.MaxTopWinPct {
-			fmt.Printf("  [skip: scraper — top win = %.0f%% of PnL]\n", wa.TopWinPct*100)
-			skipped++
-			continue
-		}
-		if wa.HistoryDays < cfg.MinHistoryDays {
-			fmt.Printf("  [skip: hist %dd < %dd]\n", wa.HistoryDays, cfg.MinHistoryDays)
-			skipped++
-			continue
-		}
-		if cfg.MaxActiveAgoDays > 0 && wa.DaysSinceActive > cfg.MaxActiveAgoDays {
-			fmt.Printf("  [skip: idle %dd > %dd]\n", wa.DaysSinceActive, cfg.MaxActiveAgoDays)
-			skipped++
-			continue
+		if !*noFilter {
+			if wa.BirdeyeWinRate < cfg.MinWinRate {
+				fmt.Printf("  [skip: wr %.1f%% < %.0f%%]\n", wa.BirdeyeWinRate*100, cfg.MinWinRate*100)
+				skipped++
+				continue
+			}
+			if wa.WinCount < cfg.MinWinCount {
+				fmt.Printf("  [skip: only %d wins < %d required]\n", wa.WinCount, cfg.MinWinCount)
+				skipped++
+				continue
+			}
+			if wa.WinDays < cfg.MinWinDays {
+				fmt.Printf("  [skip: wins on only %d day(s) < %d required]\n", wa.WinDays, cfg.MinWinDays)
+				skipped++
+				continue
+			}
+			if cfg.MaxTopWinPct > 0 && wa.TopWinPct > cfg.MaxTopWinPct {
+				fmt.Printf("  [skip: scraper — top win = %.0f%% of PnL]\n", wa.TopWinPct*100)
+				skipped++
+				continue
+			}
+			if wa.HistoryDays < cfg.MinHistoryDays {
+				fmt.Printf("  [skip: hist %dd < %dd]\n", wa.HistoryDays, cfg.MinHistoryDays)
+				skipped++
+				continue
+			}
+			if cfg.MaxActiveAgoDays > 0 && wa.DaysSinceActive > cfg.MaxActiveAgoDays {
+				fmt.Printf("  [skip: idle %dd > %dd]\n", wa.DaysSinceActive, cfg.MaxActiveAgoDays)
+				skipped++
+				continue
+			}
 		}
 
 		wa.Score = scorer.Score(wa)
