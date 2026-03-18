@@ -2,6 +2,36 @@ package types
 
 import "time"
 
+// Trade type / side / status string constants (used by solana/jupiter.go)
+const (
+	TradeMarket   = "market"
+	TradeBuy      = "buy"
+	TradeSell     = "sell"
+	TradeExecuted = "executed"
+	TradeFailed   = "failed"
+)
+
+// Token represents an SPL token's on-chain metadata.
+type Token struct {
+	Address      string
+	Symbol       string
+	Name         string
+	Decimals     int
+	Supply       uint64
+	DiscoveredAt time.Time
+}
+
+// WalletActivity is a swap event detected on a copy-traded wallet.
+type WalletActivity struct {
+	Wallet       string
+	TokenAddress string
+	Action       string // "buy" or "sell"
+	AmountSOL    float64
+	TokenAmount  float64
+	TxSignature  string
+	Timestamp    time.Time
+}
+
 type Signal struct {
 	Address   string
 	Source    string
@@ -39,17 +69,27 @@ type Position struct {
 }
 
 type Trade struct {
-	Address       string
-	Symbol        string
-	Side          string
-	EntryPrice    float64
-	ExitPrice     float64
-	Quantity      float64
-	ValueSOL      float64
-	PnLSOL        float64
-	PnLPct        float64
-	Reason        string
-	Source        string
-	OpenedAt      time.Time
-	ClosedAt      time.Time
+	// Engine-level fields (closed trade record)
+	Address    string
+	Symbol     string
+	Side       string
+	EntryPrice float64
+	ExitPrice  float64
+	Quantity   float64
+	ValueSOL   float64
+	PnLSOL     float64
+	PnLPct     float64
+	Reason     string
+	Source     string
+	OpenedAt   time.Time
+	ClosedAt   time.Time
+
+	// Execution-level fields (set by solana/jupiter.go)
+	Token       *Token
+	Type        string
+	Price       float64
+	Status      string
+	TxSignature string
+	Error       string
+	ExecutedAt  time.Time
 }

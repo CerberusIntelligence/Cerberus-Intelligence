@@ -300,28 +300,21 @@ func (b *Bot) cmdReport() {
 		}
 	}
 
-	// List wallets that traded today
-	shown := make(map[string]bool)
-	for src, s := range stats {
-		shown[src] = true
-		emoji := "🟢"
-		if s.pnl < 0 {
-			emoji = "🔴"
-		} else if s.pnl == 0 {
-			emoji = "⚪"
-		}
-		label := src
-		if full, ok := addrMap[src]; ok {
-			label = full[:12] + "..."
-		}
-		msg += fmt.Sprintf("%s `%s` — `%+.4f SOL` (%dW/%dL)\n", emoji, label, s.pnl, s.wins, s.losses)
-	}
-
-	// List wallets with no trades today
+	// Only show currently tracked wallets
 	for _, addr := range wallets {
 		src := "wallet:" + addr[:8]
-		if !shown[src] {
-			msg += fmt.Sprintf("⚪ `%s...` — no trades today\n", addr[:12])
+		s := stats[src]
+		label := addr[:12] + "..."
+		if s != nil {
+			emoji := "🟢"
+			if s.pnl < 0 {
+				emoji = "🔴"
+			} else if s.pnl == 0 {
+				emoji = "⚪"
+			}
+			msg += fmt.Sprintf("%s `%s` — `%+.4f SOL` (%dW/%dL)\n", emoji, label, s.pnl, s.wins, s.losses)
+		} else {
+			msg += fmt.Sprintf("⚪ `%s` — no trades today\n", label)
 		}
 	}
 

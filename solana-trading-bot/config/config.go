@@ -17,10 +17,12 @@ type Config struct {
 	TelegramChatID   int64
 
 	// Solana
-	SolanaRPCURL        string
-	SolanaWSURL         string
-	HeliusAPIKey        string
-	PrivateKey          string
+	SolanaRPCURL      string
+	SolanaWSURL       string
+	HeliusAPIKey      string
+	PrivateKey        string
+	WalletPrivKey     string   // alias used by standalone jupiter package
+	AdditionalRPCURLs []string // extra RPC endpoints for tx blasting
 
 	// Trading
 	PaperBalance        float64 // Starting paper balance in SOL
@@ -29,6 +31,12 @@ type Config struct {
 	MinLiquidityUSD     float64 // Minimum pool liquidity to enter
 	SlippageBPS         int
 	PriorityFeeLamports uint64
+	PriorityFee         uint64  // alias used by standalone jupiter package
+	MaxSlippagePercent  float64 // abort buy if projected price impact exceeds this %
+
+	// Wallet tracking / copy trading
+	WalletTrackingEnabled bool
+	TrackedWallets        []string
 
 	// Safety
 	RequireMintRevoked   bool
@@ -60,6 +68,10 @@ func Load() *Config {
 	minLiquidity, _ := strconv.ParseFloat(getEnv("MIN_LIQUIDITY_USD", "500"), 64)
 	slippage, _ := strconv.Atoi(getEnv("SLIPPAGE_BPS", "500"))
 	priorityFee, _ := strconv.ParseUint(getEnv("PRIORITY_FEE_LAMPORTS", "1000000"), 10, 64)
+	maxSlippage, _ := strconv.ParseFloat(getEnv("MAX_SLIPPAGE_PERCENT", "0"), 64)
+	walletTracking := getEnv("WALLET_TRACKING_ENABLED", "false") == "true"
+	trackedWallets := splitCSV(getEnv("TRACKED_WALLETS", ""))
+	additionalRPCs := splitCSV(getEnv("ADDITIONAL_RPC_URLS", ""))
 	stopLoss, _ := strconv.ParseFloat(getEnv("STOP_LOSS_PERCENT", "0.30"), 64)
 	trailingStop, _ := strconv.ParseFloat(getEnv("TRAILING_STOP_PERCENT", "0.25"), 64)
 	timeout, _ := strconv.Atoi(getEnv("TIMEOUT_MINUTES", "30"))
@@ -84,10 +96,12 @@ func Load() *Config {
 		TelegramBotToken: getEnv("TELEGRAM_BOT_TOKEN", ""),
 		TelegramChatID:   chatID,
 
-		SolanaRPCURL:        getEnv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com"),
-		SolanaWSURL:         getEnv("SOLANA_WS_URL", "wss://api.mainnet-beta.solana.com"),
-		HeliusAPIKey:        getEnv("HELIUS_API_KEY", ""),
-		PrivateKey:          getEnv("SOLANA_PRIVATE_KEY", ""),
+		SolanaRPCURL:      getEnv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com"),
+		SolanaWSURL:       getEnv("SOLANA_WS_URL", "wss://api.mainnet-beta.solana.com"),
+		HeliusAPIKey:      getEnv("HELIUS_API_KEY", ""),
+		PrivateKey:        getEnv("SOLANA_PRIVATE_KEY", ""),
+		WalletPrivKey:     getEnv("SOLANA_PRIVATE_KEY", ""),
+		AdditionalRPCURLs: additionalRPCs,
 
 		PaperBalance:        paperBalance,
 		TradeAmountSOL:      tradeAmount,
@@ -95,6 +109,11 @@ func Load() *Config {
 		MinLiquidityUSD:     minLiquidity,
 		SlippageBPS:         slippage,
 		PriorityFeeLamports: priorityFee,
+		PriorityFee:         priorityFee,
+		MaxSlippagePercent:  maxSlippage,
+
+		WalletTrackingEnabled: walletTracking,
+		TrackedWallets:        trackedWallets,
 
 		RequireMintRevoked:   getEnv("REJECT_MINT_AUTHORITY", "false") == "true",
 		RequireFreezeRevoked: getEnv("REJECT_FREEZE_AUTHORITY", "false") == "true",
@@ -119,6 +138,20 @@ func getEnv(key, defaultVal string) string {
 		return val
 	}
 	return defaultVal
+}
+
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }
 
 func parseFloatSlice(s string) []float64 {
